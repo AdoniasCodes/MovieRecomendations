@@ -1,3 +1,4 @@
+import { POSTERS } from "./posters";
 import type { Title, User } from "./types";
 
 export const ME: User = { id: "me", name: "Panda", emoji: "🐼", color: "#7C3AED" };
@@ -496,6 +497,12 @@ export const TITLES: Title[] = [
     cast: ["Zhou Dongyu", "Jackson Yee", "Yin Fang"], colorA: "#2a3a44", colorB: "#0a0a0a",
   }),
 ];
+
+// attach real TMDB poster paths (fetched by scripts/fetch-posters.mjs)
+for (const ttl of TITLES) {
+  const p = POSTERS[ttl.id];
+  if (p) ttl.posterPath = p;
+}
 
 export const TITLE_BY_ID = new Map(TITLES.map((x) => [x.id, x]));
 export const getTitle = (id: string) => TITLE_BY_ID.get(id);
