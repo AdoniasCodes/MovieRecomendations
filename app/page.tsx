@@ -39,7 +39,7 @@ export default function HomePage() {
 
   return (
     <div className="space-y-7">
-      <Header partnerName={store.partner.name} />
+      <Header partnerName={store.partner.name} herOnline={store.herOnline} />
 
       {/* Tonight's Pick hero */}
       <TonightHero pick={pick} onReshuffle={() => setPickSeed((s) => s + 1)} />
@@ -87,7 +87,7 @@ export default function HomePage() {
   );
 }
 
-function Header({ partnerName }: { partnerName: string }) {
+function Header({ partnerName, herOnline }: { partnerName: string; herOnline: boolean }) {
   return (
     <div className="flex items-center justify-between pt-1">
       <div>
@@ -95,22 +95,36 @@ function Header({ partnerName }: { partnerName: string }) {
         <h1 className="text-2xl font-black tracking-tight">
           What should you <span className="text-gradient">watch?</span>
         </h1>
+        <p className="mt-0.5 text-[11px] text-white/45">
+          {herOnline ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {partnerName} is online
+            </span>
+          ) : (
+            <span className="text-white/35">{partnerName} is offline</span>
+          )}
+        </p>
       </div>
       <div className="flex -space-x-2">
         <Bubble emoji="🐼" color="#7C3AED" />
-        <Bubble emoji="💞" color="#DB2777" />
+        <Bubble emoji="💞" color="#DB2777" online={herOnline} />
       </div>
     </div>
   );
 }
 
-function Bubble({ emoji, color }: { emoji: string; color: string }) {
+function Bubble({ emoji, color, online }: { emoji: string; color: string; online?: boolean }) {
   return (
-    <span
-      className="flex h-9 w-9 items-center justify-center rounded-full text-base ring-2 ring-base"
-      style={{ background: `${color}33` }}
-    >
-      {emoji}
+    <span className="relative">
+      <span
+        className="flex h-9 w-9 items-center justify-center rounded-full text-base ring-2 ring-base"
+        style={{ background: `${color}33` }}
+      >
+        {emoji}
+      </span>
+      {online && (
+        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-base" />
+      )}
     </span>
   );
 }

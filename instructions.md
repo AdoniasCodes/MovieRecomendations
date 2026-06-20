@@ -66,6 +66,27 @@ Pattern:
   cards. Keep prompts short; pass the couple's taste brief as system context.
 - Free tiers are rate-limited → cache by query, debounce, and degrade to local on 429.
 
+## 5b. Realtime-ready features without a backend (Watch-Along pattern)
+Build live/social features on the mock store first, shaped so a real backend swaps in cleanly:
+- Model the live entity in the store exactly as the DB will (`WatchSession`, `Reaction`) — same
+  fields the Supabase table has.
+- Drive the "other person" with **client-side timers in a `useEffect`** (mounts after hydration,
+  so SSR-safe). Key the effect on a stable id (`session.startedAt`) and clean up timers on unmount.
+- Keep all writes behind store actions (`startWatchParty`, `sendReaction(content, kind, by?)`).
+  The `by?` param lets the same action represent both me and the simulated partner — later it's
+  just "whoever the Realtime event says."
+- To go live: replace the timer simulation with a Supabase Realtime channel subscription that
+  dispatches the same actions. UI doesn't change.
+
+## 5c. PWA (installable + offline)
+- Manifest via `app/manifest.ts` (Next auto-links it). Icons can be **SVG** (`sizes: "any"`,
+  provide a separate `purpose: "maskable"` one with no rounded corners / full-bleed bg).
+- Service worker in `public/sw.js`; **register only in production** (`RegisterSW.tsx` guards on
+  `NODE_ENV`) — a dev SW serves stale builds and is maddening. Never cache `/api/*`.
+- Add `appleWebApp` + `icons` to layout `metadata`, `themeColor` to `viewport`.
+- IMPORTANT: never run `next build` while `next dev` is running — they share `.next` and it
+  corrupts the dev server. Stop dev first, or build in a separate worktree.
+
 ## 6. Next.js / SSR gotchas (already hit these)
 - Hydration mismatch: never branch first render on `Date.now()`/`Math.random()`. Use a monotonic
   counter seeded from a constant base (see `useClock()` in `store.tsx`).

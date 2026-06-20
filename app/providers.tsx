@@ -5,6 +5,8 @@ import { AssistantButton } from "@/components/ai/AssistantButton";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
 import { MatchOverlay } from "@/components/discover/MatchOverlay";
 import { TitleSheetHost } from "@/components/title/TitleSheet";
+import { WatchParty } from "@/components/watch/WatchParty";
+import { RegisterSW } from "@/components/pwa/RegisterSW";
 import { StoreProvider } from "@/lib/store";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -18,6 +20,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <NotificationsBell />
       <MatchOverlay />
       <TitleSheetHost />
+      <WatchParty />
+      <RegisterSW />
     </StoreProvider>
   );
 }

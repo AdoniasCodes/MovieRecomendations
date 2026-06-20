@@ -18,10 +18,12 @@ import type {
   Note,
   Notification,
   NotificationType,
+  Reaction,
   Title,
   Vote,
   VoteValue,
   Watcher,
+  WatchSession,
   WatchStatus,
   WatchedRecord,
   WatchlistItem,
@@ -54,6 +56,8 @@ interface State {
   watched: WatchedRecord[];
   notes: Note[];
   notifications: Notification[];
+  session: WatchSession | null;
+  herOnline: boolean; // simulated presence (Phase 3); real channel later
 }
 
 const STORAGE_KEY = "amore-movies/v2";
@@ -92,6 +96,8 @@ const initialState: State = {
   watched: initialWatched,
   notes: initialNotes,
   notifications: initialNotifications,
+  session: null,
+  herOnline: true,
 };
 
 type Action =
@@ -108,6 +114,11 @@ type Action =
   | { type: "deleteNote"; noteId: string }
   | { type: "nudge"; notif: Notification }
   | { type: "readNotifs" }
+  | { type: "startParty"; titleId: string; at: number; notifs: Notification[] }
+  | { type: "joinParty"; userId: string }
+  | { type: "endParty" }
+  | { type: "react"; reaction: Reaction }
+  | { type: "presence"; herOnline: boolean }
   | { type: "activity"; event: ActivityEvent };
 
 function upsertWatched(list: WatchedRecord[], rec: WatchedRecord): WatchedRecord[] {
@@ -238,6 +249,33 @@ function reducer(state: State, action: Action): State {
       return { ...state, notes: state.notes.filter((n) => n.id !== action.noteId) };
     case "nudge":
       return { ...state, notifications: [action.notif, ...state.notifications] };
+    case "startParty": {
+      const session: WatchSession = {
+        titleId: action.titleId,
+        hostId: ME.id,
+        startedAt: action.at,
+        participants: [ME.id],
+        reactions: [],
+        active: true,
+      };
+      return { ...state, session, notifications: [...action.notifs, ...state.notifications] };
+    }
+    case "joinParty": {
+      if (!state.session?.active) return state;
+      if (state.session.participants.includes(action.userId)) return state;
+      return {
+        ...state,
+        session: { ...state.session, participants: [...state.session.participants, action.userId] },
+      };
+    }
+    case "endParty":
+      return state.session ? { ...state, session: { ...state.session, active: false } } : state;
+    case "react": {
+      if (!state.session?.active) return state;
+      return { ...state, session: { ...state.session, reactions: [...state.session.reactions, action.reaction] } };
+    }
+    case "presence":
+      return { ...state, herOnline: action.herOnline };
     case "readNotifs":
       return { ...state, notifications: state.notifications.map((n) => (n.toId === ME.id ? { ...n, read: true } : n)) };
     case "activity":
@@ -312,6 +350,12 @@ interface StoreCtx extends State {
   deleteNote: (noteId: string) => void;
   nudge: (text: string, titleId?: string) => void;
   markNotifsRead: () => void;
+  // watch-along
+  startWatchParty: (id: string) => void;
+  joinWatchParty: (userId: string) => void;
+  endWatchParty: () => void;
+  sendReaction: (content: string, kind?: "emoji" | "text", by?: string) => void;
+  setHerPresence: (online: boolean) => void;
   /** returns true if a match fired */
   vote: (id: string, value: VoteValue, context: Context) => boolean;
 }
@@ -438,6 +482,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [clock]
   );
   const deleteNote = useCallback((noteId: string) => dispatch({ type: "deleteNote", noteId }), []);
+  const startWatchParty = useCallback(
+    (id: string) => {
+      const at = clock();
+      const title = getTitle(id);
+      dispatch({
+        type: "startParty", titleId: id, at,
+        notifs: [mkNotif(at, "started", `Panda started a watch-along of ${title?.title} 🍿`, id)],
+      });
+    },
+    [clock]
+  );
+  const joinWatchParty = useCallback((userId: string) => dispatch({ type: "joinParty", userId }), []);
+  const endWatchParty = useCallback(() => dispatch({ type: "endParty" }), []);
+  const sendReaction = useCallback(
+    (content: string, kind: "emoji" | "text" = "emoji", by?: string) => {
+      const at = clock();
+      dispatch({ type: "react", reaction: { id: "rx" + at + (by ?? ME.id), by: by ?? ME.id, kind, content, at } });
+    },
+    [clock]
+  );
+  const setHerPresence = useCallback((online: boolean) => dispatch({ type: "presence", herOnline: online }), []);
   const nudge = useCallback(
     (text: string, titleId?: string) => {
       const at = clock();
@@ -521,12 +586,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       deleteNote,
       nudge,
       markNotifsRead,
+      startWatchParty,
+      joinWatchParty,
+      endWatchParty,
+      sendReaction,
+      setHerPresence,
       vote,
     }),
     [
       state, ready, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
-      rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, vote,
+      rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
+      joinWatchParty, endWatchParty, sendReaction, setHerPresence, vote,
     ]
   );
 

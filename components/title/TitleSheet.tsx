@@ -11,7 +11,7 @@ import { closeTitleSheet, openTitleSheet, useOpenTitleId } from "@/lib/title-she
 import type { Watcher, WatchStatus } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bell, Bookmark, Check, Clapperboard, Eye, MessageCirclePlus, Sparkles, Star,
+  Bell, Bookmark, Check, Clapperboard, Eye, MessageCirclePlus, PlayCircle, Sparkles, Star,
   ThumbsDown, ThumbsUp, Wand2, X,
 } from "lucide-react";
 import { useState } from "react";
@@ -178,6 +178,17 @@ function Body({ titleId }: { titleId: string }) {
             label="Nudge Amore"
           />
         </div>
+
+        {/* watch together */}
+        <button
+          onClick={() => {
+            store.startWatchParty(t.id);
+            closeTitleSheet();
+          }}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-gradient py-3 text-sm font-bold shadow-glow active:scale-[0.98]"
+        >
+          <PlayCircle className="h-5 w-5" /> Start watch-along with Amore
+        </button>
 
         {/* watched by */}
         <div>

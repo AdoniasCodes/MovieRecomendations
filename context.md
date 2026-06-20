@@ -4,7 +4,11 @@
 > meaningful changes (a feature ships, a decision is made, the plan shifts). Pair with
 > `instructions.md` (the reusable how-to playbook).
 
-_Last updated: 2026-06-20 — Phase 2 ("Make it ours") SHIPPED. Build clean, all routes 200._
+_Last updated: 2026-06-20 — Phase 3 STARTED (Watch-Along + presence + PWA shipped; Supabase/TMDB
+foundation laid, awaiting credentials). Real Gemini AI is ON. Build clean, all routes 200._
+
+> Dev server note: the app currently serves on **http://localhost:3000** (it took 3000 after the
+> other local project's server stopped). Next picks the next free port — confirm via the page title.
 
 ---
 
@@ -127,12 +131,36 @@ restart dev. With no key the app already works — similar/assistant just use th
 - **Why Gemini for AI:** most generous free tier, good at "movies like X" knowledge tasks. Local
   fallback keeps everything working with zero keys. (Groq is the fast alternative.)
 
-## 6. Deferred (Phase 3+)
-- Supabase migration (auth, real couple pairing, RLS), TMDB ingestion, real posters.
-- Real-time presence + nudges + **watch-along** (text together while watching).
-- **PWA** (installable, push notifications).
-- Swap the simulated partner for a real second account.
-- See `docs/07-backend-wiring.md`.
+## 5b. Phase 3 — "Live & together" (STARTED)
+
+Shipped this round (verifiable, no external accounts needed):
+- [x] **Real AI ON** — Gemini key wired (`.env.local`, gitignored). Default model **gemini-2.5-flash**
+      (2.0-flash had 0 free quota on this project). Header auth (`x-goog-api-key`), `thinkingBudget: 0`
+      for speed, 20s timeout, local fallback intact. Verified `source: "gemini"`.
+- [x] **Watch-Along** — `WatchSession` + `Reaction` in the store (realtime-ready seam). Full-screen
+      "Together Tonight" view (`components/watch/WatchParty.tsx`): live presence avatars, reaction
+      stream, quick-emoji + message input. Simulated Amore joins ~1.6s in and reacts on a 7s timer.
+      Started from the TitleSheet ("Start watch-along with Amore"). Mounted globally in providers.
+- [x] **Presence** — `herOnline` in store; green "Amore is online" dot on the Tonight header + the
+      watch-along avatars. Simulated now; swap for Supabase Realtime presence later.
+- [x] **PWA** — `app/manifest.ts`, `public/icon.svg` + `icon-maskable.svg`, `public/sw.js`
+      (offline shell, prod-only via `RegisterSW.tsx`), `/offline` route, apple-web-app meta.
+      Installable on phones.
+
+Foundation laid (needs Panda's credentials to go live):
+- [x] **Supabase schema** — `supabase/migrations/0001_init.sql` (all tables map 1:1 to the store,
+      RLS scoped per-couple, realtime publication for notifications/sessions/reactions/matches).
+      `lib/supabase.ts` gated client (null until env set). `supabase/README.md` go-live steps.
+- [ ] **Wire Supabase live** — needs `NEXT_PUBLIC_SUPABASE_URL` + anon key (+ service role). Then
+      flip each store action's `dispatch` to a Supabase write + subscribe reducer to Realtime.
+- [ ] **TMDB ingestion** — needs `TMDB_READ_TOKEN`. Fills `titles` cache + real `posterPath`.
+- [ ] **Real second account** — replace the simulated Amore (in `partnerAffinity`/WatchParty timers)
+      with her actual logged-in account once auth + pairing are live.
+
+## 6. Deferred (later)
+- Push notifications (web-push) once PWA is installed + a backend exists to send them.
+- Richer watch-along (synced playback position, video provider deep-links).
+- See `docs/07-backend-wiring.md` + `supabase/README.md`.
 
 ## 7. Conventions / gotchas
 - **Never** put real API keys in the repo — use `.env.local`.

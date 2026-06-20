@@ -179,6 +179,28 @@ export interface User {
   color: string;
 }
 
+// ---- Watch-Along (Phase 3) -----------------------------------------------
+
+/** a live reaction/message dropped during a watch-along session */
+export interface Reaction {
+  id: string;
+  by: string; // user id
+  kind: "emoji" | "text";
+  content: string;
+  at: number;
+}
+
+/** a synced "watching together" session. Realtime-ready: swap the simulated
+ * partner timers for a Supabase Realtime channel and this shape doesn't change. */
+export interface WatchSession {
+  titleId: string;
+  hostId: string;
+  startedAt: number;
+  participants: string[]; // user ids currently "in" the session
+  reactions: Reaction[];
+  active: boolean;
+}
+
 export interface Scored {
   title: Title;
   score: number;
