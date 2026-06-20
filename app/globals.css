@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background: #08080a;
+  color: #fff;
+  overscroll-behavior-y: none;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ambient cinematic backdrop */
+.app-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 15% 0%, rgba(124, 58, 237, 0.16), transparent 70%),
+    radial-gradient(55% 45% at 90% 10%, rgba(219, 39, 119, 0.14), transparent 70%),
+    radial-gradient(70% 60% at 50% 110%, rgba(124, 58, 237, 0.1), transparent 70%),
+    #08080a;
+}
+
+@layer components {
+  .glass {
+    @apply border border-white/10 bg-white/[0.04] backdrop-blur-xl;
+  }
+  .glass-strong {
+    background: rgba(20, 20, 26, 0.72);
+    @apply border border-white/10 backdrop-blur-2xl;
+  }
+  .text-gradient {
+    @apply bg-accent-gradient bg-clip-text text-transparent;
+  }
+  .chip {
+    @apply rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-white/80 transition active:scale-95;
+  }
+  .chip-active {
+    @apply border-transparent bg-accent-gradient text-white shadow-glow;
+  }
+}
+
+/* Hide scrollbars on horizontal rails */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Shimmer for skeletons / locked badges */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
