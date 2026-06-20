@@ -2,7 +2,8 @@ import { POSTERS } from "./posters";
 import type { Title, User } from "./types";
 
 export const ME: User = { id: "me", name: "Panda", emoji: "🐼", color: "#7C3AED" };
-export const PARTNER: User = { id: "her", name: "Amore", emoji: "💞", color: "#DB2777" };
+// Hermi 💞 (aka Mi Amore / LOML)
+export const PARTNER: User = { id: "her", name: "Hermi", emoji: "💞", color: "#DB2777" };
 export const USERS = [ME, PARTNER];
 
 // ---- taste profiles (drive personalization) ------------------------------

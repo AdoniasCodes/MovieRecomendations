@@ -147,15 +147,26 @@ Shipped this round (verifiable, no external accounts needed):
       (offline shell, prod-only via `RegisterSW.tsx`), `/offline` route, apple-web-app meta.
       Installable on phones.
 
-Foundation laid (needs Panda's credentials to go live):
-- [x] **Supabase schema** — `supabase/migrations/0001_init.sql` (all tables map 1:1 to the store,
-      RLS scoped per-couple, realtime publication for notifications/sessions/reactions/matches).
-      `lib/supabase.ts` gated client (null until env set). `supabase/README.md` go-live steps.
-- [ ] **Wire Supabase live** — needs `NEXT_PUBLIC_SUPABASE_URL` + anon key (+ service role). Then
-      flip each store action's `dispatch` to a Supabase write + subscribe reducer to Realtime.
-- [ ] **TMDB ingestion** — needs `TMDB_READ_TOKEN`. Fills `titles` cache + real `posterPath`.
-- [ ] **Real second account** — replace the simulated Amore (in `partnerAffinity`/WatchParty timers)
-      with her actual logged-in account once auth + pairing are live.
+LIVE BACKEND (credentials received — project `oodgafejoecyabvrhhew`, eu-west-1):
+- [x] **Schema applied** to the live project: `0001_init.sql` (12 tables, RLS on all, realtime on
+      notifications/matches/watch_sessions/reactions) + `0002_pairing_rpc.sql` (SECURITY DEFINER
+      `ensure_profile` / `create_couple` / `join_couple`). Apply via the eu-west-1 pooler:
+      `psql -h aws-0-eu-west-1.pooler.supabase.com -p 5432 -U postgres.oodgafejoecyabvrhhew -d postgres`.
+      (Direct `db.<ref>.supabase.co` is IPv6-only and unreachable here — use the pooler.)
+- [x] **TMDB real posters** — `scripts/fetch-posters.mjs` → `lib/posters.ts`; 54 titles show real art.
+- [x] **Real AI** — Gemini on (gemini-2.5-flash).
+- [x] **Auth + couple pairing** — `lib/auth.tsx` (email-OTP sign-in; mailer_autoconfirm is OFF so we
+      use 6-digit codes), profile/couple bootstrap, pairing UI in Profile (`components/auth/GoLive.tsx`).
+      AuthProvider wraps the app; **demo mode stays the default** (login is optional & additive).
+      Verified end-to-end by `scripts/verify-pairing.mjs` (create/join/RLS/isolation all pass).
+- [ ] **NEXT: live data sync** (task 14) — when signed-in + paired, route store mutations to Supabase
+      + subscribe to Realtime (presence, nudges, matches, watch-along); disable simulated Hermi in
+      live mode. The store is still demo-only right now — login/pairing works but data isn't synced yet.
+- [ ] **Real second account** — Hermi signs in on her device + joins via the couple code (works now);
+      her real votes/reactions replace the simulation once data sync lands.
+
+### Partner identity
+PARTNER is **Hermi** 💞 (`id: "her"`) — pet names Mi Amore / LOML. Brand stays "Amore Movies".
 
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.

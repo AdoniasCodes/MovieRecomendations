@@ -1,22 +1,15 @@
 "use client";
 
+import { GoLive } from "@/components/auth/GoLive";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { ME, PARTNER, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import type { Title } from "@/lib/types";
-import { Check, Copy, LogOut, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { LogOut, RefreshCw } from "lucide-react";
 
 export default function ProfilePage() {
   const store = useStore();
-  const [copied, setCopied] = useState(false);
   const loved = TASTE_SEED.lovedTitleIds.map(getTitle).filter(Boolean) as Title[];
-
-  const copyCode = () => {
-    navigator.clipboard?.writeText("AMORE-7C3A").catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  };
 
   const reset = () => {
     if (!confirm("Reset all watchlist, votes and matches? Your taste profile stays.")) return;
@@ -40,18 +33,8 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* couple invite */}
-      <section className="glass rounded-2xl p-4">
-        <h3 className="text-sm font-bold">Your couple</h3>
-        <p className="mt-0.5 text-xs text-white/45">Share this code so your partner joins the same space.</p>
-        <button
-          onClick={copyCode}
-          className="mt-3 flex w-full items-center justify-between rounded-xl bg-white/[0.06] px-4 py-3 transition hover:bg-white/[0.1]"
-        >
-          <span className="font-mono text-lg tracking-widest">AMORE-7C3A</span>
-          {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4 text-white/50" />}
-        </button>
-      </section>
+      {/* couple — real auth + pairing */}
+      <GoLive />
 
       {/* taste */}
       <section>

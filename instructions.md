@@ -87,6 +87,21 @@ Build live/social features on the mock store first, shaped so a real backend swa
 - IMPORTANT: never run `next build` while `next dev` is running — they share `.next` and it
   corrupts the dev server. Stop dev first, or build in a separate worktree.
 
+## 5d. Supabase auth + couple pairing + RLS (verified pattern)
+- **Applying migrations:** direct `db.<ref>.supabase.co` is often IPv6-only — if the machine has no
+  IPv6, use the **pooler** `aws-0-<region>.pooler.supabase.com:5432`, user `postgres.<ref>`,
+  `PGSSLMODE=require`. Find the region by probing (`select 1`); ours is **eu-west-1**.
+- **Pairing under RLS:** a joiner must look up a couple by code *before* they're a member, which
+  couple-scoped RLS forbids. Solve with **SECURITY DEFINER** RPCs (`create_couple`, `join_couple`,
+  `ensure_profile`) granted to `authenticated` — they bypass RLS safely and enforce limits (max 2).
+- **Auth UX:** if `mailer_autoconfirm` is off (check `GET /auth/v1/settings`), use **email OTP codes**
+  (`signInWithOtp` → `verifyOtp(type:'email')`) — no redirect-URL config needed, works for known users.
+- **Keep login optional:** wrap the app in AuthProvider but DON'T gate it — demo mode stays default so
+  solo testing is instant; "go live" is an additive upgrade in Profile.
+- **Verify before trusting:** a Node script using the service-role admin API can create confirmed
+  users, exercise the RPCs, and assert RLS isolation (stranger sees 0 rows), then delete the users.
+  See `scripts/verify-pairing.mjs`. Always test RLS isolation, not just the happy path.
+
 ## 6. Next.js / SSR gotchas (already hit these)
 - Hydration mismatch: never branch first render on `Date.now()`/`Math.random()`. Use a monotonic
   counter seeded from a constant base (see `useClock()` in `store.tsx`).

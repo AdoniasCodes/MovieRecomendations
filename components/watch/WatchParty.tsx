@@ -97,9 +97,9 @@ function Body() {
         <Avatar user={PARTNER} online={herHere} />
         <p className="text-sm text-white/80">
           {herHere ? (
-            <>You & Amore are watching <span className="font-semibold">together</span> 💞</>
+            <>You & {PARTNER.name} are watching <span className="font-semibold">together</span> 💞</>
           ) : (
-            <>Waiting for Amore to join…</>
+            <>Waiting for {PARTNER.name} to join…</>
           )}
         </p>
       </div>
@@ -144,7 +144,7 @@ function Body() {
               setInput("");
             }
           }}
-          placeholder="Say something to Amore…"
+          placeholder={`Say something to ${PARTNER.name}…`}
           className="flex-1 rounded-full bg-white/[0.12] px-4 py-3 text-sm outline-none backdrop-blur placeholder:text-white/45 focus:bg-white/[0.18]"
         />
         <button

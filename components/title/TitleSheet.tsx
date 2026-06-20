@@ -175,7 +175,7 @@ function Body({ titleId }: { titleId: string }) {
           <Action
             onClick={() => store.nudge(`Panda's thinking about ${t.title} 👀`, t.id)}
             icon={<Bell className="h-5 w-5" />}
-            label="Nudge Amore"
+            label={`Nudge ${store.partner.name}`}
           />
         </div>
 
@@ -187,7 +187,7 @@ function Body({ titleId }: { titleId: string }) {
           }}
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-gradient py-3 text-sm font-bold shadow-glow active:scale-[0.98]"
         >
-          <PlayCircle className="h-5 w-5" /> Start watch-along with Amore
+          <PlayCircle className="h-5 w-5" /> Start watch-along with {store.partner.name}
         </button>
 
         {/* watched by */}
@@ -195,7 +195,7 @@ function Body({ titleId }: { titleId: string }) {
           <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Watched by</p>
           <div className="flex gap-2">
             <WatchedToggle who="me" emoji="🐼" name="Me" on={watchers.includes("me")} store={store} id={t.id} />
-            <WatchedToggle who="her" emoji="💞" name="Amore" on={watchers.includes("her")} store={store} id={t.id} />
+            <WatchedToggle who="her" emoji="💞" name={store.partner.name} on={watchers.includes("her")} store={store} id={t.id} />
           </div>
         </div>
 

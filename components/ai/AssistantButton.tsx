@@ -12,7 +12,7 @@ import { useState } from "react";
 const SUGGESTIONS = [
   "Something wholesome for us tonight",
   "A cerebral crime film, low on blood",
-  "A Korean movie Amore would love",
+  "A Korean movie Hermi would love",
   "A dark thriller just for me",
 ];
 

@@ -7,10 +7,12 @@ import { MatchOverlay } from "@/components/discover/MatchOverlay";
 import { TitleSheetHost } from "@/components/title/TitleSheet";
 import { WatchParty } from "@/components/watch/WatchParty";
 import { RegisterSW } from "@/components/pwa/RegisterSW";
+import { AuthProvider } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
+    <AuthProvider>
     <StoreProvider>
       <div className="relative mx-auto min-h-screen w-full max-w-md px-4 pb-28 pt-3">
         {children}
@@ -23,5 +25,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <WatchParty />
       <RegisterSW />
     </StoreProvider>
+    </AuthProvider>
   );
 }

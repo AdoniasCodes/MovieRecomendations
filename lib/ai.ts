@@ -22,11 +22,11 @@ export interface AIResult {
   picks: Pick[];
 }
 
-export const TASTE_BRIEF = `This is for a couple, Panda and Amore.
+export const TASTE_BRIEF = `This is for a couple, Panda and Hermi (Panda affectionately calls her Mi Amore / LOML).
 - Panda: loves crime, psychological thrillers, mystery, detective, dark drama. Totally fine with blood, gore, and brutal action.
-- Amore: loves wholesome — animation, comedy, heartfelt drama, romance. DISLIKES blood/gore/brutal action. Crime is OK for her ONLY if low-violence and cerebral (outsmart-the-detective, the mental game). LOVES international cinema: Korean, Japanese, Turkish, Chinese.
+- Hermi: loves wholesome — animation, comedy, heartfelt drama, romance. DISLIKES blood/gore/brutal action. Crime is OK for her ONLY if low-violence and cerebral (outsmart-the-detective, the mental game). LOVES international cinema: Korean, Japanese, Turkish, Chinese.
 - Neither likes Bollywood / Indian cinema — never suggest it.
-- "Together" picks must avoid gore and brutal action (Amore's rule wins), and lean cerebral, wholesome, or international.`;
+- "Together" picks must avoid gore and brutal action (Hermi's rule wins), and lean cerebral, wholesome, or international.`;
 
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -152,7 +152,7 @@ function localAssistant(qRaw: string, audience: Audience): AIResult {
 
   const hidden = q.includes("hidden") || q.includes("gem") || q.includes("underrated");
   const classic = q.includes("classic") || q.includes("must");
-  const aud: Audience = q.includes("for her") || q.includes("amore")
+  const aud: Audience = q.includes("for her") || q.includes("amore") || q.includes("hermi") || q.includes("loml")
     ? "her"
     : q.includes("just me") || q.includes("for me")
       ? "me"
