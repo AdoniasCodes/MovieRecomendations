@@ -102,6 +102,25 @@ Build live/social features on the mock store first, shaped so a real backend swa
   users, exercise the RPCs, and assert RLS isolation (stranger sees 0 rows), then delete the users.
   See `scripts/verify-pairing.mjs`. Always test RLS isolation, not just the happy path.
 
+## 5e. Swapping a mock store for a live backend (the seam paid off)
+The action-seam design (every mutation is a named store function) let us add live mode WITHOUT
+touching the reducer or any UI:
+- **Translation boundary:** keep the store's internal ids semantic (`"me"`/`"her"`); translate
+  to/from real auth uuids only in the live layer (`lib/live.ts`). Reducer + UI never learn about uuids.
+- **Optimistic + reconcile:** each action does its normal local `dispatch` (instant feel) AND mirrors
+  the write to Supabase. A realtime subscription debounces (250ms) then **refetches the whole couple
+  slice and re-hydrates** — idempotent, far simpler than replaying granular events, fine for 2 users.
+- **Mode flag:** `live = signed-in && paired`. Keep a `liveRef` (ref, not state) so action callbacks
+  read the current mode without re-creating. Demo path stays the default; live is additive.
+- **Disable the simulation in live mode** (partner affinity, fake replies, WatchParty timers) — guard
+  on `store.live` / `liveRef.current`.
+- **Don't clobber demo data:** skip localStorage persistence while live; restore demo on sign-out.
+- **Auto-detect pairing:** subscribe to `couple_members` so the creator flips to live when the partner
+  joins, no reload.
+- **Verify the swap at the data layer** with a two-user Node script that mirrors the live writes and
+  asserts the partner reads them + RLS isolation (`scripts/verify-live.mjs`). The React realtime glue
+  is the only part that needs a real two-device test.
+
 ## 6. Next.js / SSR gotchas (already hit these)
 - Hydration mismatch: never branch first render on `Date.now()`/`Math.random()`. Use a monotonic
   counter seeded from a constant base (see `useClock()` in `store.tsx`).

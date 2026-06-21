@@ -193,6 +193,7 @@ export interface Reaction {
 /** a synced "watching together" session. Realtime-ready: swap the simulated
  * partner timers for a Supabase Realtime channel and this shape doesn't change. */
 export interface WatchSession {
+  id?: string; // Supabase row id when live
   titleId: string;
   hostId: string;
   startedAt: number;

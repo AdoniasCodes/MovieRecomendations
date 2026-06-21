@@ -159,11 +159,25 @@ LIVE BACKEND (credentials received — project `oodgafejoecyabvrhhew`, eu-west-1
       use 6-digit codes), profile/couple bootstrap, pairing UI in Profile (`components/auth/GoLive.tsx`).
       AuthProvider wraps the app; **demo mode stays the default** (login is optional & additive).
       Verified end-to-end by `scripts/verify-pairing.mjs` (create/join/RLS/isolation all pass).
-- [ ] **NEXT: live data sync** (task 14) — when signed-in + paired, route store mutations to Supabase
-      + subscribe to Realtime (presence, nudges, matches, watch-along); disable simulated Hermi in
-      live mode. The store is still demo-only right now — login/pairing works but data isn't synced yet.
-- [ ] **Real second account** — Hermi signs in on her device + joins via the couple code (works now);
-      her real votes/reactions replace the simulation once data sync lands.
+- [x] **Live data sync + realtime** (`lib/live.ts`) — when signed-in + paired, the store routes every
+      mutation to Supabase and re-hydrates from a Realtime refetch (debounced 250ms); presence via a
+      Realtime presence channel; matches form for real (`pushVoteAndMaybeMatch` — only when Hermi has
+      also liked). Simulated Hermi is disabled in live mode (vote sim + WatchParty timers guarded by
+      `store.live`). The "me"/"her" semantic ids translate to/from auth uuids at the `lib/live.ts`
+      boundary, so the reducer + all UI are unchanged. AuthProvider auto-detects Hermi joining
+      (subscribes to `couple_members`) so Panda flips to live without a reload.
+      Verified end-to-end by `scripts/verify-live.mjs` (save / vote→match / watched / note / session +
+      reactions / RLS isolation all pass between two real users).
+- [x] **Real second account** — Hermi signs in on her device + joins via the couple code; her real
+      votes/reactions now drive matches & watch-along.
+
+### Live-mode notes / known gaps
+- "live" = signed in AND paired (both members present). Solo-signed-in (couple created, partner not
+  joined yet) stays in demo/localStorage; data starts syncing once Hermi joins.
+- `activity` feed (/us) isn't synced to Supabase yet — it's rebuilt locally and resets on refetch in
+  live mode. Low priority. The match overlay fires for the partner who *completes* the match
+  (the other sees it appear in Matches via refetch).
+- Demo data (localStorage) is preserved untouched while live; sign out → demo returns.
 
 ### Partner identity
 PARTNER is **Hermi** 💞 (`id: "her"`) — pet names Mi Amore / LOML. Brand stays "Amore Movies".

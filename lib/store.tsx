@@ -7,10 +7,21 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from "react";
+import { useAuth } from "./auth";
+import {
+  type Ids,
+  loadCoupleState,
+  push,
+  pushVoteAndMaybeMatch,
+  subscribeCoupleChanges,
+  trackPresence,
+} from "./live";
 import { ME, PARTNER, getTitle } from "./mock-data";
 import { scoreTitle, tooViolentForHer } from "./recommend";
+import { getSupabase } from "./supabase";
 import type {
   ActivityEvent,
   Context,
@@ -100,6 +111,12 @@ const initialState: State = {
   herOnline: true,
 };
 
+// clean base for LIVE mode (no demo seeds)
+const emptyState: State = {
+  watchlist: [], votes: [], matches: [], activity: [], ratings: {},
+  watched: [], notes: [], notifications: [], session: null, herOnline: false,
+};
+
 type Action =
   | { type: "hydrate"; state: State }
   | { type: "save"; titleId: string; userId: string; at: number; notifs: Notification[] }
@@ -119,6 +136,7 @@ type Action =
   | { type: "endParty" }
   | { type: "react"; reaction: Reaction }
   | { type: "presence"; herOnline: boolean }
+  | { type: "setSessionId"; id: string }
   | { type: "activity"; event: ActivityEvent };
 
 function upsertWatched(list: WatchedRecord[], rec: WatchedRecord): WatchedRecord[] {
@@ -276,6 +294,8 @@ function reducer(state: State, action: Action): State {
     }
     case "presence":
       return { ...state, herOnline: action.herOnline };
+    case "setSessionId":
+      return state.session ? { ...state, session: { ...state.session, id: action.id } } : state;
     case "readNotifs":
       return { ...state, notifications: state.notifications.map((n) => (n.toId === ME.id ? { ...n, read: true } : n)) };
     case "activity":
@@ -327,6 +347,8 @@ interface StoreCtx extends State {
   me: typeof ME;
   partner: typeof PARTNER;
   ready: boolean;
+  /** true when signed in AND paired — data is synced via Supabase, not simulated */
+  live: boolean;
   pendingMatch: Title | null;
   unreadCount: number;
   clearMatch: () => void;
@@ -368,6 +390,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [pendingMatchId, setPendingMatchId] = useState<string | null>(null);
   const clock = useClock();
 
+  // ---- live mode (signed in + paired) ----
+  const auth = useAuth();
+  const sb = getSupabase();
+  const liveIds: Ids | null =
+    auth.live && auth.couple && auth.user && auth.partner
+      ? { couple: auth.couple.id, my: auth.user.id, her: auth.partner.id }
+      : null;
+  const live = !!liveIds;
+  const liveRef = useRef<Ids | null>(null);
+  liveRef.current = liveIds;
+  const sessionIdRef = useRef<string | undefined>(undefined);
+  sessionIdRef.current = state.session?.id;
+
+  // demo hydrate (once)
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -376,12 +412,51 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setReady(true);
   }, []);
 
+  // persist — DEMO only (never clobber demo data while live)
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || liveRef.current) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {}
   }, [state, ready]);
+
+  // LIVE: load couple slice from Supabase, then keep it fresh via realtime + presence
+  useEffect(() => {
+    if (!live || !sb || !liveIds) return;
+    const ids = liveIds;
+    let cancelled = false;
+    let herOnline = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const reload = async () => {
+      const slice = await loadCoupleState(sb, ids, herOnline);
+      if (!cancelled) dispatch({ type: "hydrate", state: { ...emptyState, ...slice, herOnline } });
+    };
+    reload();
+    const unsub = subscribeCoupleChanges(sb, ids, () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(reload, 250);
+    });
+    const unpres = trackPresence(sb, ids, (online) => {
+      herOnline = online;
+      dispatch({ type: "presence", herOnline: online });
+    });
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      unsub();
+      unpres();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, sb, liveIds?.couple, liveIds?.my, liveIds?.her]);
+
+  // back to DEMO on logout / unpair
+  useEffect(() => {
+    if (live || !ready) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      dispatch({ type: "hydrate", state: raw ? { ...initialState, ...JSON.parse(raw) } : initialState });
+    } catch {}
+  }, [live, ready]);
 
   const isSaved = useCallback((id: string) => state.watchlist.some((w) => w.titleId === id), [state.watchlist]);
   const isMatched = useCallback((id: string) => state.matches.some((m) => m.titleId === id), [state.matches]);
@@ -414,17 +489,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       const at = clock();
       const title = getTitle(id);
+      const ids = liveRef.current;
       dispatch({
         type: "save", titleId: id, userId: ME.id, at,
-        notifs: [
-          mkNotif(at, "watchlisted", `Panda saved ${title?.title} for you both`, id),
-          ...maybeReply(at, "watchlisted", title ?? undefined),
-        ],
+        notifs: ids
+          ? []
+          : [mkNotif(at, "watchlisted", `Panda saved ${title?.title} for you both`, id), ...maybeReply(at, "watchlisted", title ?? undefined)],
       });
+      if (ids && sb) {
+        push.save(sb, ids, id);
+        push.notify(sb, ids, "watchlisted", `Panda saved ${title?.title} for you both`, id);
+      }
     },
-    [clock]
+    [clock, sb]
   );
-  const unsave = useCallback((id: string) => dispatch({ type: "unsave", titleId: id }), []);
+  const unsave = useCallback(
+    (id: string) => {
+      dispatch({ type: "unsave", titleId: id });
+      const ids = liveRef.current;
+      if (ids && sb) push.unsave(sb, ids, id);
+    },
+    [sb]
+  );
   const toggleSave = useCallback(
     (id: string) => (isSaved(id) ? unsave(id) : save(id)),
     [isSaved, save, unsave]
@@ -433,96 +519,173 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (id: string, s: WatchStatus) => {
       const at = clock();
       const title = getTitle(id);
+      const ids = liveRef.current;
       const notifs: Notification[] =
-        s === "watching"
+        !ids && s === "watching"
           ? [mkNotif(at, "started", `Panda just started ${title?.title}`, id), ...maybeReply(at, "started", title ?? undefined)]
           : [];
       dispatch({ type: "status", titleId: id, status: s, at, notifs });
+      if (ids && sb) {
+        push.status(sb, ids, id, s);
+        if (s === "watching") push.notify(sb, ids, "started", `Panda just started ${title?.title}`, id);
+      }
     },
-    [clock]
+    [clock, sb]
   );
   const rate = useCallback(
-    (id: string, score: number) => dispatch({ type: "rate", titleId: id, score, at: clock() }),
-    [clock]
+    (id: string, score: number) => {
+      dispatch({ type: "rate", titleId: id, score, at: clock() });
+      const ids = liveRef.current;
+      if (ids && sb) push.watched(sb, ids, id, "me", score);
+    },
+    [clock, sb]
   );
   const markWatched = useCallback(
-    (id: string, w: Watcher) => dispatch({ type: "watched", rec: { titleId: id, watcher: w, createdAt: clock() } }),
-    [clock]
+    (id: string, w: Watcher) => {
+      dispatch({ type: "watched", rec: { titleId: id, watcher: w, createdAt: clock() } });
+      const ids = liveRef.current;
+      if (ids && sb) push.watched(sb, ids, id, w);
+    },
+    [clock, sb]
   );
-  const unwatch = useCallback((id: string, w: Watcher) => dispatch({ type: "unwatch", titleId: id, watcher: w }), []);
+  const unwatch = useCallback(
+    (id: string, w: Watcher) => {
+      dispatch({ type: "unwatch", titleId: id, watcher: w });
+      const ids = liveRef.current;
+      if (ids && sb) push.unwatch(sb, ids, id, w);
+    },
+    [sb]
+  );
   const rateAs = useCallback(
     (id: string, w: Watcher, score: number) => {
       if (w === "me") dispatch({ type: "rate", titleId: id, score, at: clock() });
       else dispatch({ type: "watched", rec: { titleId: id, watcher: w, rating: score, createdAt: clock() } });
+      const ids = liveRef.current;
+      if (ids && sb) push.watched(sb, ids, id, w, score);
     },
-    [clock]
+    [clock, sb]
   );
   const toggleCinema = useCallback(
     (id: string) => {
       const at = clock();
       const next = !isCinema(id);
       const title = getTitle(id);
-      const notifs = next
-        ? [mkNotif(at, "cinema", `Panda wants to see ${title?.title} in cinemas 🎬`, id), ...maybeReply(at, "cinema", title ?? undefined)]
-        : [];
+      const ids = liveRef.current;
+      const notifs =
+        !ids && next
+          ? [mkNotif(at, "cinema", `Panda wants to see ${title?.title} in cinemas 🎬`, id), ...maybeReply(at, "cinema", title ?? undefined)]
+          : [];
       dispatch({ type: "cinema", titleId: id, cinema: next, at, notifs });
+      if (ids && sb) {
+        push.cinema(sb, ids, id, next);
+        if (next) push.notify(sb, ids, "cinema", `Panda wants to see ${title?.title} in cinemas 🎬`, id);
+      }
     },
-    [clock, isCinema]
+    [clock, isCinema, sb]
   );
   const addNote = useCallback(
     (id: string, text: string) => {
       const at = clock();
       const title = getTitle(id);
+      const ids = liveRef.current;
       const note: Note = { id: "note" + at, titleId: id, authorId: ME.id, text, createdAt: at };
       dispatch({
         type: "note", note,
-        notifs: [mkNotif(at, "note", `Panda left a note on ${title?.title}`, id)],
+        notifs: ids ? [] : [mkNotif(at, "note", `Panda left a note on ${title?.title}`, id)],
       });
+      if (ids && sb) {
+        push.note(sb, ids, id, text);
+        push.notify(sb, ids, "note", `Panda left a note on ${title?.title}`, id);
+      }
     },
-    [clock]
+    [clock, sb]
   );
-  const deleteNote = useCallback((noteId: string) => dispatch({ type: "deleteNote", noteId }), []);
+  const deleteNote = useCallback(
+    (noteId: string) => {
+      dispatch({ type: "deleteNote", noteId });
+      const ids = liveRef.current;
+      if (ids && sb) push.deleteNote(sb, ids, noteId);
+    },
+    [sb]
+  );
   const startWatchParty = useCallback(
     (id: string) => {
       const at = clock();
       const title = getTitle(id);
+      const ids = liveRef.current;
       dispatch({
         type: "startParty", titleId: id, at,
-        notifs: [mkNotif(at, "started", `Panda started a watch-along of ${title?.title} 🍿`, id)],
+        notifs: ids ? [] : [mkNotif(at, "started", `Panda started a watch-along of ${title?.title} 🍿`, id)],
       });
+      if (ids && sb) {
+        push.notify(sb, ids, "started", `Panda started a watch-along of ${title?.title} 🍿`, id);
+        push.startSession(sb, ids, id).then((sid) => {
+          if (sid) dispatch({ type: "setSessionId", id: sid });
+        });
+      }
     },
-    [clock]
+    [clock, sb]
   );
   const joinWatchParty = useCallback((userId: string) => dispatch({ type: "joinParty", userId }), []);
-  const endWatchParty = useCallback(() => dispatch({ type: "endParty" }), []);
+  const endWatchParty = useCallback(() => {
+    const ids = liveRef.current;
+    const sid = sessionIdRef.current;
+    dispatch({ type: "endParty" });
+    if (ids && sb) push.endSession(sb, ids, sid);
+  }, [sb]);
   const sendReaction = useCallback(
     (content: string, kind: "emoji" | "text" = "emoji", by?: string) => {
       const at = clock();
-      dispatch({ type: "react", reaction: { id: "rx" + at + (by ?? ME.id), by: by ?? ME.id, kind, content, at } });
+      const author = by ?? ME.id;
+      dispatch({ type: "react", reaction: { id: "rx" + at + author, by: author, kind, content, at } });
+      const ids = liveRef.current;
+      const sid = sessionIdRef.current;
+      if (ids && sb && sid && author === ME.id) push.react(sb, ids, sid, kind, content);
     },
-    [clock]
+    [clock, sb]
   );
   const setHerPresence = useCallback((online: boolean) => dispatch({ type: "presence", herOnline: online }), []);
   const nudge = useCallback(
     (text: string, titleId?: string) => {
       const at = clock();
-      dispatch({ type: "nudge", notif: mkNotif(at, "nudge", text, titleId) });
+      const ids = liveRef.current;
+      if (ids && sb) push.notify(sb, ids, "nudge", text, titleId);
+      else dispatch({ type: "nudge", notif: mkNotif(at, "nudge", text, titleId) });
     },
-    [clock]
+    [clock, sb]
   );
-  const markNotifsRead = useCallback(() => dispatch({ type: "readNotifs" }), []);
+  const markNotifsRead = useCallback(() => {
+    dispatch({ type: "readNotifs" });
+    const ids = liveRef.current;
+    if (ids && sb) push.readNotifs(sb, ids);
+  }, [sb]);
 
   const vote = useCallback(
     (id: string, value: VoteValue, context: Context): boolean => {
       const at = clock();
       const myVoteObj: Vote = { titleId: id, userId: ME.id, value, createdAt: at };
+      const positive = value === "like" || value === "love";
+      const title = getTitle(id);
+      const liveIdsNow = liveRef.current;
+
+      // ---- LIVE: write my real vote; form a match only if Hermi already liked it ----
+      if (liveIdsNow && sb) {
+        dispatch({ type: "vote", vote: myVoteObj, activity: [], notifs: [] });
+        if (positive && title) push.notify(sb, liveIdsNow, "favorited", `Panda liked ${title.title}`, id);
+        pushVoteAndMaybeMatch(sb, liveIdsNow, id, value).then((matched) => {
+          if (matched) {
+            setPendingMatchId(matched);
+            push.notify(sb, liveIdsNow, "matched", `It's a match on ${title?.title}! 💞`, id);
+          }
+        });
+        return false;
+      }
+
+      // ---- DEMO: simulate Hermi ----
       const activity: ActivityEvent[] = [];
       const notifs: Notification[] = [];
       let partnerVote: Vote | undefined;
       let match: Match | undefined;
-
-      const positive = value === "like" || value === "love";
-      const title = getTitle(id);
 
       if (positive && title) {
         notifs.push(mkNotif(at, "favorited", `Panda liked ${title.title}`, id));
@@ -554,7 +717,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "vote", vote: myVoteObj, partnerVote, match, activity, notifs });
       return !!match;
     },
-    [clock]
+    [clock, sb]
   );
 
   const value = useMemo<StoreCtx>(
@@ -563,6 +726,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       me: ME,
       partner: PARTNER,
       ready,
+      live,
       pendingMatch: pendingMatchId ? getTitle(pendingMatchId) ?? null : null,
       unreadCount,
       clearMatch: () => setPendingMatchId(null),
@@ -594,7 +758,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       vote,
     }),
     [
-      state, ready, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
+      state, ready, live, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
       rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
       joinWatchParty, endWatchParty, sendReaction, setHerPresence, vote,

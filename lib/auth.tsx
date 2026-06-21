@@ -106,6 +106,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sb, loadAll]);
 
+  // while waiting for the partner to join, watch the couple for a new member
+  useEffect(() => {
+    if (!sb || !session || !couple || partner) return;
+    const ch = sb
+      .channel(`members:${couple.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "couple_members", filter: `couple_id=eq.${couple.id}` },
+        () => loadAll(session)
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(ch);
+    };
+  }, [sb, session, couple, partner, loadAll]);
+
   const signInWithOtp = useCallback(
     async (email: string) => {
       if (!sb) return { error: "Supabase not configured" };

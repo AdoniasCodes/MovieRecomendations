@@ -26,10 +26,10 @@ export function WatchParty() {
   const session = store.session;
   const active = !!session?.active;
 
-  // drive the simulated partner: join shortly after start, then react on a timer
+  // drive the simulated partner (DEMO only — in live mode the real Hermi reacts)
   const startedAt = session?.startedAt;
   useEffect(() => {
-    if (!active) return;
+    if (!active || store.live) return;
     const join = setTimeout(() => store.joinWatchParty(PARTNER.id), 1600);
     let n = 0;
     const tick = setInterval(() => {
