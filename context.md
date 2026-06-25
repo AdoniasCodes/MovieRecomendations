@@ -182,6 +182,28 @@ LIVE BACKEND (credentials received — project `oodgafejoecyabvrhhew`, eu-west-1
 ### Partner identity
 PARTNER is **Hermi** 💞 (`id: "her"`) — pet names Mi Amore / LOML. Brand stays "Amore Movies".
 
+## 5c. Phase 5 — "Real & frictionless" (✅ SHIPPED, deployed on Netlify)
+
+Deployed to **Netlify** (not Vercel/cPanel — SSR + API routes need a Node runtime).
+Repo `AdoniasCodes/MovieRecomendations`, auto-deploys from `main`. `netlify.toml` +
+`@netlify/plugin-nextjs`. Gotcha: Netlify blocks Next.js versions hit by CVE-2025-55182 —
+keep `next` >= 15.5.19. Secret-scan exempts `GEMINI_MODEL` (a model name, not a secret).
+
+- [x] **Live TMDB catalog** — real search / trending / genre-browse over the full TMDB
+      database. `lib/tmdb.ts` (server, maps TMDB→our `Title`, infers violence/cerebral/
+      international, excludes Bollywood+adult) → `app/api/catalog` → `lib/catalog.ts` (client,
+      registers results). A runtime **title registry** in `lib/mock-data.ts` makes `getTitle()`
+      resolve live titles everywhere; saved ones persist (`localStorage["amore-movies/catalog"]`).
+      Curated 54 still power the personalized rec engine; live catalog powers discovery.
+      UI: Discover has **Browse** (search + trending + genre rails) and **Mood match** tabs.
+- [x] **Pick-who-you-are + PIN login (no email)** — `components/auth/PinLogin.tsx`: tap
+      "I'm Panda"/"I'm Hermi" + a 4-digit PIN (**9009**) → `auth.signInWithPin` does a Supabase
+      **password** sign-in (PIN→password `amore-<pin>`, see `lib/pin-accounts.ts`). Two accounts
+      `panda@amoremovies.app` / `hermi@amoremovies.app` are **pre-created + pre-paired**
+      (couple AM-427CD) by `scripts/setup-pin-accounts.mjs` (idempotent, run once). Signing in
+      flips straight to **live mode** — real cross-device sync, real matches. Replaces the email-OTP
+      card in Profile (OTP code paths remain in `lib/auth.tsx` but are no longer surfaced).
+
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.
 - Richer watch-along (synced playback position, video provider deep-links).
