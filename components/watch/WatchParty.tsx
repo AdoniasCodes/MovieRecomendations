@@ -9,46 +9,13 @@ import { useEffect, useRef, useState } from "react";
 
 const QUICK = ["❤️", "😂", "😮", "😍", "🍿", "🔥", "🥹", "👀"];
 
-// in-character wholesome reactions Amore drops during the watch-along
-const HER_EMOJI = ["😍", "🥹", "❤️", "😂", "🥰", "😮", "🍿"];
-const HER_TEXT = [
-  "this is so good 🥹",
-  "I love this scene",
-  "awww",
-  "didn't see that coming!",
-  "we should've watched this sooner",
-  "okay this is my new favourite",
-  "you have the best taste 💞",
-];
-
 export function WatchParty() {
   const store = useStore();
   const session = store.session;
   const active = !!session?.active;
 
-  // drive the simulated partner (DEMO only — in live mode the real Hermi reacts)
-  const startedAt = session?.startedAt;
-  useEffect(() => {
-    if (!active || store.live) return;
-    const join = setTimeout(() => store.joinWatchParty(PARTNER.id), 1600);
-    let n = 0;
-    const tick = setInterval(() => {
-      n += 1;
-      // alternate emoji / text, pick deterministically-ish by counter
-      if (n % 3 === 0) {
-        const text = HER_TEXT[(n + (startedAt ?? 0)) % HER_TEXT.length];
-        store.sendReaction(text, "text", PARTNER.id);
-      } else {
-        const e = HER_EMOJI[(n * 3 + (startedAt ?? 0)) % HER_EMOJI.length];
-        store.sendReaction(e, "emoji", PARTNER.id);
-      }
-    }, 7000);
-    return () => {
-      clearTimeout(join);
-      clearInterval(tick);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, startedAt]);
+  // No simulated partner. In live mode the real Hermi joins + reacts via
+  // Supabase Realtime; solo, the session simply waits for her.
 
   if (!session || !active) return null;
   const t = getTitle(session.titleId);

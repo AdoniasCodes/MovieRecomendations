@@ -20,7 +20,6 @@ import {
   trackPresence,
 } from "./live";
 import { ME, PARTNER, getTitle } from "./mock-data";
-import { scoreTitle, tooViolentForHer } from "./recommend";
 import { getSupabase } from "./supabase";
 import type {
   ActivityEvent,
@@ -39,22 +38,6 @@ import type {
   WatchedRecord,
   WatchlistItem,
 } from "./types";
-
-// ---- partner simulation ---------------------------------------------------
-// Amore's reaction reuses the SAME taste engine the recs use (audience "her"),
-// so the simulated partner and the recommendations agree on her taste:
-// wholesome / cerebral / international = yes, gore = hard no.
-function partnerAffinity(t: Title): number {
-  if (tooViolentForHer(t)) return 0.03; // her no-gore rule
-  const s = scoreTitle(t, { context: "together", era: "any" }, { audience: "her" }).score;
-  return Math.min(Math.max(s * 1.15 + 0.12, 0), 0.97);
-}
-
-let rng = 99173;
-function rand() {
-  rng = (rng * 16807) % 2147483647;
-  return rng / 2147483647;
-}
 
 // ---- state ---------------------------------------------------------------
 
@@ -77,47 +60,16 @@ function now() {
   return 1718900000000; // stable base; client increments via counter
 }
 
-const initialActivity: ActivityEvent[] = [
-  { id: "a1", actorId: PARTNER.id, type: "saved", titleId: "tv:95396", detail: "saved Severance", createdAt: now() - 1000 * 60 * 60 * 5 },
-  { id: "a2", actorId: PARTNER.id, type: "rated", titleId: "movie:11324", detail: "rated Shutter Island ★★★★½", createdAt: now() - 1000 * 60 * 60 * 26 },
-];
-
-// Amore has rewatched a few cozy favourites — seeds the Rewatch list.
-const initialWatched: WatchedRecord[] = [
-  { titleId: "tv:64349", watcher: "her", rating: 10, createdAt: now() - 1000 * 60 * 60 * 80 },
-  { titleId: "movie:129", watcher: "her", rating: 9, createdAt: now() - 1000 * 60 * 60 * 50 },
-  { titleId: "movie:619264", watcher: "her", rating: 9, createdAt: now() - 1000 * 60 * 60 * 30 },
-];
-
-const initialNotes: Note[] = [
-  { id: "n0", titleId: "movie:705996", authorId: PARTNER.id, text: "We HAVE to watch this one — it's so my type 💞", createdAt: now() - 1000 * 60 * 60 * 12 },
-];
-
-const initialNotifications: Notification[] = [
-  { id: "ni1", type: "nudge", actorId: PARTNER.id, toId: ME.id, text: "Movie night tonight? 🍿", createdAt: now() - 1000 * 60 * 60 * 3, read: false },
-  { id: "ni2", type: "note", actorId: PARTNER.id, toId: ME.id, titleId: "movie:705996", text: "Left you a note on Decision to Leave 💞", createdAt: now() - 1000 * 60 * 60 * 12, read: false },
-];
-
+// No seeded/dummy partner data. Hermi's activity, notes, matches, watched and
+// online status are ALL real — they only appear once she actually uses the app
+// (live mode via Supabase). Solo/demo starts genuinely empty.
 const initialState: State = {
-  watchlist: [],
-  votes: [],
-  matches: [],
-  activity: initialActivity,
-  ratings: {},
-  watched: initialWatched,
-  notes: initialNotes,
-  notifications: initialNotifications,
-  session: null,
-  // real presence only: false until the partner is actually signed in + present
-  // on the live Supabase channel (see trackPresence). No more fake "online".
-  herOnline: false,
-};
-
-// clean base for LIVE mode (no demo seeds)
-const emptyState: State = {
   watchlist: [], votes: [], matches: [], activity: [], ratings: {},
   watched: [], notes: [], notifications: [], session: null, herOnline: false,
 };
+
+// same clean base for LIVE mode
+const emptyState: State = { ...initialState };
 
 type Action =
   | { type: "hydrate"; state: State }
@@ -328,21 +280,6 @@ function mkNotif(
   };
 }
 
-// occasionally Amore replies, so the bell gets real incoming traffic
-function maybeReply(at: number, kind: NotificationType, title?: Title): Notification[] {
-  if (rand() > 0.55) return [];
-  const name = title?.title ?? "that";
-  const lines: Partial<Record<NotificationType, string>> = {
-    started: `Ooh start ${name}, I'm watching too! 👀`,
-    favorited: `Added ${name} to my list too 💞`,
-    cinema: `Yes!! ${name} on the big screen — date 🍿`,
-    watchlisted: `Saved ${name} for us 💛`,
-  };
-  const text = lines[kind];
-  if (!text) return [];
-  return [mkNotif(at + 1, kind, text, title?.id, false)];
-}
-
 // ---- context -------------------------------------------------------------
 
 interface StoreCtx extends State {
@@ -492,12 +429,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const at = clock();
       const title = getTitle(id);
       const ids = liveRef.current;
-      dispatch({
-        type: "save", titleId: id, userId: ME.id, at,
-        notifs: ids
-          ? []
-          : [mkNotif(at, "watchlisted", `Panda saved ${title?.title} for you both`, id), ...maybeReply(at, "watchlisted", title ?? undefined)],
-      });
+      dispatch({ type: "save", titleId: id, userId: ME.id, at, notifs: [] });
       if (ids && sb) {
         push.save(sb, ids, id);
         push.notify(sb, ids, "watchlisted", `Panda saved ${title?.title} for you both`, id);
@@ -522,11 +454,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const at = clock();
       const title = getTitle(id);
       const ids = liveRef.current;
-      const notifs: Notification[] =
-        !ids && s === "watching"
-          ? [mkNotif(at, "started", `Panda just started ${title?.title}`, id), ...maybeReply(at, "started", title ?? undefined)]
-          : [];
-      dispatch({ type: "status", titleId: id, status: s, at, notifs });
+      dispatch({ type: "status", titleId: id, status: s, at, notifs: [] });
       if (ids && sb) {
         push.status(sb, ids, id, s);
         if (s === "watching") push.notify(sb, ids, "started", `Panda just started ${title?.title}`, id);
@@ -573,11 +501,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const next = !isCinema(id);
       const title = getTitle(id);
       const ids = liveRef.current;
-      const notifs =
-        !ids && next
-          ? [mkNotif(at, "cinema", `Panda wants to see ${title?.title} in cinemas 🎬`, id), ...maybeReply(at, "cinema", title ?? undefined)]
-          : [];
-      dispatch({ type: "cinema", titleId: id, cinema: next, at, notifs });
+      dispatch({ type: "cinema", titleId: id, cinema: next, at, notifs: [] });
       if (ids && sb) {
         push.cinema(sb, ids, id, next);
         if (next) push.notify(sb, ids, "cinema", `Panda wants to see ${title?.title} in cinemas 🎬`, id);
@@ -683,41 +607,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // ---- DEMO: simulate Hermi ----
-      const activity: ActivityEvent[] = [];
-      const notifs: Notification[] = [];
-      let partnerVote: Vote | undefined;
-      let match: Match | undefined;
-
-      if (positive && title) {
-        notifs.push(mkNotif(at, "favorited", `Panda liked ${title.title}`, id));
-        notifs.push(...maybeReply(at, "favorited", title));
-      }
-
-      if (context === "together" && positive && title) {
-        const p = partnerAffinity(title);
-        const partnerLikes = rand() < p;
-        partnerVote = {
-          titleId: id, userId: PARTNER.id, value: partnerLikes ? "like" : "pass", createdAt: at + 1,
-        };
-        if (partnerLikes) {
-          match = { titleId: id, matchedAt: at + 2 };
-          activity.push({
-            id: "evm" + at, actorId: PARTNER.id, type: "matched", titleId: id,
-            detail: `matched on ${title.title}`, createdAt: at + 2,
-          });
-          notifs.push(mkNotif(at + 2, "matched", `It's a match on ${title.title}! 💞`, id, false));
-          setPendingMatchId(id);
-        }
-      }
-      activity.push({
-        id: "evv" + at, actorId: ME.id, type: "voted", titleId: id,
-        detail: `${value === "pass" ? "passed on" : value === "seen" ? "has seen" : "liked"} ${title?.title}`,
-        createdAt: at,
-      });
-
-      dispatch({ type: "vote", vote: myVoteObj, partnerVote, match, activity, notifs });
-      return !!match;
+      // ---- SOLO/DEMO: record only my own vote. No simulated partner, no fake
+      // matches. Real matches form only in live mode when Hermi actually likes
+      // the same title (see the LIVE branch above). ----
+      const activity: ActivityEvent[] = [
+        {
+          id: "evv" + at, actorId: ME.id, type: "voted", titleId: id,
+          detail: `${value === "pass" ? "passed on" : value === "seen" ? "has seen" : "liked"} ${title?.title}`,
+          createdAt: at,
+        },
+      ];
+      dispatch({ type: "vote", vote: myVoteObj, activity, notifs: [] });
+      return false;
     },
     [clock, sb]
   );
