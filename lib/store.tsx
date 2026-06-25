@@ -68,7 +68,7 @@ interface State {
   notes: Note[];
   notifications: Notification[];
   session: WatchSession | null;
-  herOnline: boolean; // simulated presence (Phase 3); real channel later
+  herOnline: boolean; // real Supabase presence in live mode; false otherwise
 }
 
 const STORAGE_KEY = "amore-movies/v2";
@@ -108,7 +108,9 @@ const initialState: State = {
   notes: initialNotes,
   notifications: initialNotifications,
   session: null,
-  herOnline: true,
+  // real presence only: false until the partner is actually signed in + present
+  // on the live Supabase channel (see trackPresence). No more fake "online".
+  herOnline: false,
 };
 
 // clean base for LIVE mode (no demo seeds)

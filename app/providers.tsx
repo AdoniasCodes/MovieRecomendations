@@ -7,6 +7,7 @@ import { MatchOverlay } from "@/components/discover/MatchOverlay";
 import { TitleSheetHost } from "@/components/title/TitleSheet";
 import { WatchParty } from "@/components/watch/WatchParty";
 import { RegisterSW } from "@/components/pwa/RegisterSW";
+import { WelcomeGate } from "@/components/WelcomeGate";
 import { AuthProvider } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
 
@@ -24,6 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <TitleSheetHost />
       <WatchParty />
       <RegisterSW />
+      <WelcomeGate />
     </StoreProvider>
     </AuthProvider>
   );
