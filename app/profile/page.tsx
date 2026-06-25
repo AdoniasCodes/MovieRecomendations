@@ -83,7 +83,7 @@ export default function ProfilePage() {
       </section>
 
       <p className="pb-2 pt-2 text-center text-[11px] text-white/30">
-        Amore Movies · running on mock data · Supabase + TMDB wiring next
+        Amore Movies · live TMDB catalog · made for Panda &amp; Hermi 💞
       </p>
     </div>
   );

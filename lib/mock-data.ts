@@ -506,4 +506,41 @@ for (const ttl of TITLES) {
 }
 
 export const TITLE_BY_ID = new Map(TITLES.map((x) => [x.id, x]));
-export const getTitle = (id: string) => TITLE_BY_ID.get(id);
+
+// --- live catalog registry -------------------------------------------------
+// The curated TITLES above seed the recommendation engine. Titles fetched live
+// from TMDB (search / trending / browse) are registered here at runtime so that
+// getTitle() — the single resolver used across the whole app — can render them
+// in the title sheet, watchlist, matches, etc. Saved ones persist so they
+// survive reloads.
+const CATALOG_KEY = "amore-movies/catalog";
+const REGISTRY = new Map<string, Title>(TITLE_BY_ID);
+
+if (typeof window !== "undefined") {
+  try {
+    const raw = window.localStorage.getItem(CATALOG_KEY);
+    if (raw) for (const t of JSON.parse(raw) as Title[]) REGISTRY.set(t.id, t);
+  } catch {
+    /* ignore corrupt cache */
+  }
+}
+
+/** Register live TMDB titles so getTitle() can resolve them everywhere. */
+export function registerTitles(titles: Title[]) {
+  let changed = false;
+  for (const t of titles) {
+    if (TITLE_BY_ID.has(t.id)) continue; // curated data is richer — keep it
+    if (!REGISTRY.has(t.id)) changed = true;
+    REGISTRY.set(t.id, t);
+  }
+  if (changed && typeof window !== "undefined") {
+    try {
+      const dynamic = [...REGISTRY.values()].filter((t) => !TITLE_BY_ID.has(t.id));
+      window.localStorage.setItem(CATALOG_KEY, JSON.stringify(dynamic));
+    } catch {
+      /* storage full / unavailable — registry still works in-memory */
+    }
+  }
+}
+
+export const getTitle = (id: string): Title | undefined => REGISTRY.get(id);

@@ -1,5 +1,6 @@
 "use client";
 
+import { Browse } from "@/components/discover/Browse";
 import { MoodQuiz } from "@/components/discover/MoodQuiz";
 import { SwipeDeck } from "@/components/discover/SwipeDeck";
 import { recommend } from "@/lib/recommend";
@@ -9,9 +10,11 @@ import { motion } from "framer-motion";
 import { useCallback, useState } from "react";
 
 type Phase = "quiz" | "loading" | "deck";
+type Tab = "browse" | "mood";
 
 export default function DiscoverPage() {
   const store = useStore();
+  const [tab, setTab] = useState<Tab>("browse");
   const [phase, setPhase] = useState<Phase>("quiz");
   const [cards, setCards] = useState<Scored[]>([]);
   const [context, setContext] = useState<QuizAnswers["context"]>("together");
@@ -32,7 +35,39 @@ export default function DiscoverPage() {
     [store.votes, store.me.id]
   );
 
-  if (phase === "quiz") return <MoodQuiz onDone={start} />;
+  const tabs = (
+    <div className="mb-4 flex gap-1 rounded-2xl border border-white/10 bg-white/5 p-1">
+      {(["browse", "mood"] as Tab[]).map((t) => (
+        <button
+          key={t}
+          onClick={() => setTab(t)}
+          className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${
+            tab === t ? "bg-accent-gradient text-white shadow-glow" : "text-white/55 hover:text-white"
+          }`}
+        >
+          {t === "browse" ? "Browse" : "Mood match"}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (tab === "browse") {
+    return (
+      <div className="pt-2">
+        {tabs}
+        <Browse />
+      </div>
+    );
+  }
+
+  // mood-match flow
+  if (phase === "quiz")
+    return (
+      <div className="pt-2">
+        {tabs}
+        <MoodQuiz onDone={start} />
+      </div>
+    );
   if (phase === "loading") return <Loader />;
 
   return (
