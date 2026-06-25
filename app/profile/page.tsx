@@ -1,6 +1,6 @@
 "use client";
 
-import { GoLive } from "@/components/auth/GoLive";
+import { PinLogin } from "@/components/auth/PinLogin";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { ME, PARTNER, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
@@ -34,7 +34,7 @@ export default function ProfilePage() {
       </div>
 
       {/* couple — real auth + pairing */}
-      <GoLive />
+      <PinLogin />
 
       {/* taste */}
       <section>

@@ -2,6 +2,7 @@
 
 import type { Session, User } from "@supabase/supabase-js";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { derivePassword } from "./pin-accounts";
 import { getSupabase, supabaseConfigured } from "./supabase";
 
 export interface Profile {
@@ -27,6 +28,8 @@ interface AuthCtx {
   live: boolean;
   signInWithOtp: (email: string) => Promise<{ error?: string }>;
   verifyOtp: (email: string, token: string) => Promise<{ error?: string }>;
+  /** "pick who you are" + shared PIN → password sign-in (no email). */
+  signInWithPin: (email: string, pin: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   createCouple: () => Promise<{ code?: string; error?: string }>;
   joinCouple: (code: string) => Promise<{ error?: string }>;
@@ -138,6 +141,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [sb]
   );
+  const signInWithPin = useCallback(
+    async (email: string, pin: string) => {
+      if (!sb) return { error: "Supabase not configured" };
+      const { error } = await sb.auth.signInWithPassword({ email, password: derivePassword(pin) });
+      return error ? { error: "Wrong PIN — try again." } : {};
+    },
+    [sb]
+  );
   const signOut = useCallback(async () => {
     await sb?.auth.signOut();
   }, [sb]);
@@ -175,12 +186,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       live: !!session && !!couple,
       signInWithOtp,
       verifyOtp,
+      signInWithPin,
       signOut,
       createCouple,
       joinCouple,
       refresh,
     }),
-    [loading, session, profile, couple, partner, signInWithOtp, verifyOtp, signOut, createCouple, joinCouple, refresh]
+    [loading, session, profile, couple, partner, signInWithOtp, verifyOtp, signInWithPin, signOut, createCouple, joinCouple, refresh]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
