@@ -7,7 +7,13 @@ export const metadata: Metadata = {
   description: "A discovery hub built for two. Mood-based picks, swipe, match, watch together.",
   applicationName: "Amore Movies",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Amore" },
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

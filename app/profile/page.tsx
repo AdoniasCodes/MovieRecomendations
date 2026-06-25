@@ -1,6 +1,7 @@
 "use client";
 
 import { PinLogin } from "@/components/auth/PinLogin";
+import { InstallButton } from "@/components/pwa/InstallButton";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { ME, PARTNER, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
@@ -35,6 +36,9 @@ export default function ProfilePage() {
 
       {/* couple — real auth + pairing */}
       <PinLogin />
+
+      {/* install as an app */}
+      <InstallButton />
 
       {/* taste */}
       <section>
