@@ -21,3 +21,5 @@ async function fetchCatalog(params: Record<string, string>): Promise<Title[]> {
 export const searchCatalog = (q: string) => fetchCatalog({ type: "search", q });
 export const trendingCatalog = () => fetchCatalog({ type: "trending" });
 export const browseCatalog = (genre: string) => fetchCatalog({ type: "browse", genre });
+/** ~100+ taste-filtered titles for the Tonight's Pick carousel. */
+export const tonightCatalog = () => fetchCatalog({ type: "tonight" });

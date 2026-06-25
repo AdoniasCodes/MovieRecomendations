@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchTmdb, trendingTmdb, browseTmdb } from "@/lib/tmdb";
+import { searchTmdb, trendingTmdb, browseTmdb, tonightPoolTmdb } from "@/lib/tmdb";
 
 // Live catalog endpoint. ?type=search&q= | ?type=trending | ?type=browse&genre=
 export async function GET(req: Request) {
@@ -13,6 +13,8 @@ export async function GET(req: Request) {
       results = await searchTmdb(searchParams.get("q") ?? "", page);
     } else if (type === "browse") {
       results = await browseTmdb(searchParams.get("genre") ?? "Drama", page);
+    } else if (type === "tonight") {
+      results = await tonightPoolTmdb();
     } else {
       results = await trendingTmdb(page);
     }

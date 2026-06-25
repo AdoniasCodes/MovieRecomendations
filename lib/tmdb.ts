@@ -245,3 +245,27 @@ export async function browseTmdb(genre: string, page = 1): Promise<Title[]> {
     .sort((a, b) => b.popularity - a.popularity);
   return blended;
 }
+
+// Genres that blend both tastes (Panda's crime/thriller/mystery + Amore's
+// wholesome/romance/animation/international cerebral picks).
+const TONIGHT_GENRES = ["Mystery", "Crime", "Thriller", "Drama", "Romance", "Comedy", "Animation"];
+
+/** A large (~100), taste-filtered pool for the "Tonight's Pick" carousel.
+ * Excludes gore (Amore's no-gore rule for "together") and low-rated titles. */
+export async function tonightPoolTmdb(): Promise<Title[]> {
+  const lists = await Promise.all([
+    trendingTmdb().catch(() => []),
+    ...TONIGHT_GENRES.map((g) => browseTmdb(g).catch(() => [])),
+  ]);
+  const seen = new Set<string>();
+  const out: Title[] = [];
+  for (const t of lists.flat()) {
+    if (seen.has(t.id)) continue;
+    if (t.violence >= 4) continue; // Amore's hard no-gore filter for together
+    if (t.voteAverage < 6.2) continue; // keep the bar high
+    if (!t.posterPath) continue; // hero needs real art
+    seen.add(t.id);
+    out.push(t);
+  }
+  return out.slice(0, 150);
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { PosterCard } from "@/components/ui/PosterCard";
+import { tonightCatalog } from "@/lib/catalog";
 import { cn } from "@/lib/cn";
 import { getTitle } from "@/lib/mock-data";
 import { classics, hiddenGems, reseed, surpriseMe, tonightsPick } from "@/lib/recommend";
@@ -10,22 +11,64 @@ import type { Scored, Title } from "@/lib/types";
 import { motion } from "framer-motion";
 import { Dices, Play, Shuffle, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+/** a friendly "why" for a TMDB pool title, leaning on the taste brief */
+function whyFor(t: Title): string {
+  if (t.international && t.cerebral) return `A cerebral ${t.country} pick — the mind-game, not the carnage.`;
+  if (t.international) return `${t.country} cinema you two might love.`;
+  if (t.cerebral) return `Cerebral ${(t.genres[0] ?? "mystery").toLowerCase()} — outsmart the story.`;
+  if (t.violence <= 1) return `Wholesome and easy — good for together.`;
+  if (t.genres.some((g) => ["Crime", "Thriller", "Mystery"].includes(g)))
+    return `A gripping ${t.genres[0].toLowerCase()} for the dark-drama mood.`;
+  return `Highly rated ${(t.genres[0] ?? "pick").toLowerCase()} you haven't watched yet.`;
+}
 
 export default function HomePage() {
   const store = useStore();
   const [pickSeed, setPickSeed] = useState(0);
+  const [pool, setPool] = useState<Title[]>([]);
+  const [idx, setIdx] = useState(0);
 
   const excluded = useMemo(
     () => new Set(store.watchlist.filter((w) => w.status === "finished").map((w) => w.titleId)),
     [store.watchlist]
   );
 
-  const pick = useMemo(() => {
+  // pull a big, shuffled TMDB pool once so "Not feeling it" always has more
+  useEffect(() => {
+    let alive = true;
+    tonightCatalog().then((list) => {
+      if (!alive || !list.length) return;
+      const a = [...list];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      setPool(a);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const curated = useMemo(() => {
     reseed(1337 + pickSeed * 17);
     return pickSeed % 2 === 1 ? surpriseMe(excluded) : tonightsPick(excluded);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickSeed, excluded]);
+
+  // the live pool (minus anything finished) drives the carousel; fall back to
+  // the curated engine until the pool loads.
+  const poolView = useMemo(() => pool.filter((t) => !excluded.has(t.id)), [pool, excluded]);
+  const fromPool = poolView.length ? poolView[idx % poolView.length] : null;
+  const pick: Scored = fromPool ? { title: fromPool, score: 0, why: whyFor(fromPool) } : curated;
+
+  const nextPick = () => (poolView.length ? setIdx((i) => i + 1) : setPickSeed((s) => s + 1));
+  const surprisePick = () =>
+    poolView.length
+      ? setIdx((i) => i + 1 + Math.floor(Math.random() * Math.max(1, poolView.length - 1)))
+      : setPickSeed((s) => s + 1);
 
   const gems = useMemo(() => hiddenGems(8), []);
   const classicPicks = useMemo(() => classics(8), []);
@@ -42,14 +85,14 @@ export default function HomePage() {
       <Header partnerName={store.partner.name} herOnline={store.herOnline} />
 
       {/* Tonight's Pick hero */}
-      <TonightHero pick={pick} onReshuffle={() => setPickSeed((s) => s + 1)} />
+      <TonightHero pick={pick} onReshuffle={nextPick} />
 
       {/* quick actions */}
       <div className="grid grid-cols-3 gap-2.5">
         <QuickAction
           icon={<Sparkles className="h-5 w-5" />}
           label="Surprise Me"
-          onClick={() => setPickSeed((s) => s + 1)}
+          onClick={surprisePick}
         />
         <QuickAction icon={<Dices className="h-5 w-5" />} label="Randomize" onClick={() => randomFrom(store, openTitleSheet)} />
         <Link href="/discover" className="contents">
@@ -139,11 +182,19 @@ function TonightHero({ pick, onReshuffle }: { pick: Scored; onReshuffle: () => v
       className="relative overflow-hidden rounded-3xl shadow-card"
     >
       <div
-        className="relative h-64"
+        className="relative h-72"
         style={{ background: `linear-gradient(150deg, ${t.colorA}, ${t.colorB})` }}
       >
+        {t.posterPath && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`https://image.tmdb.org/t/p/w780${t.posterPath}`}
+            alt={t.title}
+            className="absolute inset-0 h-full w-full object-cover object-top"
+          />
+        )}
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/10" />
         <div className="absolute left-4 top-4 rounded-full bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/80 backdrop-blur">
           ✦ Tonight&apos;s pick
         </div>
