@@ -246,6 +246,29 @@ export async function browseTmdb(genre: string, page = 1): Promise<Title[]> {
   return blended;
 }
 
+function blend(movies: { results?: RawTmdb[] }, tv: { results?: RawTmdb[] }): Title[] {
+  return [...mapList(movies.results ?? [], "movie"), ...mapList(tv.results ?? [], "tv")]
+    .sort((a, b) => b.popularity - a.popularity);
+}
+
+/** Highest-rated movies + shows (deep catalog, paginated). */
+export async function topRatedTmdb(page = 1): Promise<Title[]> {
+  const [m, t] = await Promise.all([
+    tmdb("/movie/top_rated", { page: String(page) }),
+    tmdb("/tv/top_rated", { page: String(page) }),
+  ]);
+  return blend(m, t);
+}
+
+/** Freshly released / currently airing (the "latest" surface), paginated. */
+export async function latestTmdb(page = 1): Promise<Title[]> {
+  const [m, t] = await Promise.all([
+    tmdb("/movie/now_playing", { page: String(page) }),
+    tmdb("/tv/on_the_air", { page: String(page) }),
+  ]);
+  return blend(m, t);
+}
+
 // Genres that blend both tastes (Panda's crime/thriller/mystery + Amore's
 // wholesome/romance/animation/international cerebral picks).
 const TONIGHT_GENRES = ["Mystery", "Crime", "Thriller", "Drama", "Romance", "Comedy", "Animation"];

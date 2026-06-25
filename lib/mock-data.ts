@@ -508,39 +508,70 @@ for (const ttl of TITLES) {
 export const TITLE_BY_ID = new Map(TITLES.map((x) => [x.id, x]));
 
 // --- live catalog registry -------------------------------------------------
-// The curated TITLES above seed the recommendation engine. Titles fetched live
-// from TMDB (search / trending / browse) are registered here at runtime so that
-// getTitle() — the single resolver used across the whole app — can render them
-// in the title sheet, watchlist, matches, etc. Saved ones persist so they
-// survive reloads.
-const CATALOG_KEY = "amore-movies/catalog";
-const REGISTRY = new Map<string, Title>(TITLE_BY_ID);
+// getTitle() is the single resolver used across the whole app. It resolves from
+// three tiers so infinite scrolling never bloats storage:
+//   1. STATIC  — the curated TITLES (richest data; seeds the rec engine)
+//   2. pinned  — titles the user actually interacted with (saved/voted/watched/
+//                noted/matched). Persisted unbounded — but this set stays small.
+//   3. recent  — a capped LRU of everything just browsed. In-memory + a capped
+//                slice persisted for a nice reload, evicted past RECENT_CAP.
+const RECENT_KEY = "amore-movies/catalog";
+const PINNED_KEY = "amore-movies/catalog-pinned";
+const RECENT_CAP = 500; // ~500 browsed titles ≈ well under the localStorage budget
 
-if (typeof window !== "undefined") {
+const recent = new Map<string, Title>(); // insertion-ordered → cheap LRU
+const pinned = new Map<string, Title>();
+
+function hydrate(key: string, into: Map<string, Title>) {
+  if (typeof window === "undefined") return;
   try {
-    const raw = window.localStorage.getItem(CATALOG_KEY);
-    if (raw) for (const t of JSON.parse(raw) as Title[]) REGISTRY.set(t.id, t);
+    const raw = window.localStorage.getItem(key);
+    if (raw) for (const t of JSON.parse(raw) as Title[]) into.set(t.id, t);
   } catch {
     /* ignore corrupt cache */
   }
 }
+hydrate(RECENT_KEY, recent);
+hydrate(PINNED_KEY, pinned);
 
-/** Register live TMDB titles so getTitle() can resolve them everywhere. */
-export function registerTitles(titles: Title[]) {
-  let changed = false;
-  for (const t of titles) {
-    if (TITLE_BY_ID.has(t.id)) continue; // curated data is richer — keep it
-    if (!REGISTRY.has(t.id)) changed = true;
-    REGISTRY.set(t.id, t);
-  }
-  if (changed && typeof window !== "undefined") {
-    try {
-      const dynamic = [...REGISTRY.values()].filter((t) => !TITLE_BY_ID.has(t.id));
-      window.localStorage.setItem(CATALOG_KEY, JSON.stringify(dynamic));
-    } catch {
-      /* storage full / unavailable — registry still works in-memory */
-    }
+function persist(key: string, map: Map<string, Title>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify([...map.values()]));
+  } catch {
+    /* storage full/unavailable — registry still works in-memory */
   }
 }
 
-export const getTitle = (id: string): Title | undefined => REGISTRY.get(id);
+/** Register live TMDB titles so getTitle() can resolve them. Capped LRU so
+ * endless browsing/scrolling can never blow up storage or memory. */
+export function registerTitles(titles: Title[]) {
+  let changed = false;
+  for (const t of titles) {
+    if (TITLE_BY_ID.has(t.id) || pinned.has(t.id)) continue;
+    recent.delete(t.id); // re-insert at the end (most-recent)
+    recent.set(t.id, t);
+    changed = true;
+  }
+  // evict oldest beyond the cap
+  while (recent.size > RECENT_CAP) recent.delete(recent.keys().next().value as string);
+  if (changed) persist(RECENT_KEY, recent);
+}
+
+/** Permanently keep the titles the user has acted on, so their watchlist /
+ * matches / notes always resolve even after browsing thousands of others. */
+export function pinTitles(ids: Iterable<string>) {
+  let changed = false;
+  for (const id of ids) {
+    if (TITLE_BY_ID.has(id) || pinned.has(id)) continue;
+    const t = recent.get(id);
+    if (t) {
+      pinned.set(id, t);
+      changed = true;
+    }
+  }
+  if (changed) persist(PINNED_KEY, pinned);
+}
+
+export const getTitle = (id: string): Title | undefined =>
+  TITLE_BY_ID.get(id) ?? pinned.get(id) ?? recent.get(id);

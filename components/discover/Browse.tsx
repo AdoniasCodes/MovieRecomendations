@@ -1,40 +1,74 @@
 "use client";
 
 import { PosterCard } from "@/components/ui/PosterCard";
-import { browseCatalog, searchCatalog, trendingCatalog } from "@/lib/catalog";
+import { loadCatalogPage } from "@/lib/catalog";
 import { BROWSE_GENRES } from "@/lib/tmdb-genres";
 import type { Title } from "@/lib/types";
 import { motion } from "framer-motion";
 import { Loader2, Search, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+const CATEGORIES = ["Trending", "Top Rated", "New", ...BROWSE_GENRES];
 
 export function Browse() {
   const [query, setQuery] = useState("");
-  const [genre, setGenre] = useState<string>("Trending");
+  const [category, setCategory] = useState("Trending");
   const [results, setResults] = useState<Title[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [done, setDone] = useState(false); // no more pages
   const reqId = useRef(0);
+  const seen = useRef(new Set<string>());
 
-  // debounced search; empty query falls back to the active genre / trending
+  // (re)load page 1 whenever the query or category changes (search debounced)
   useEffect(() => {
     const id = ++reqId.current;
+    setLoading(true);
     const run = async () => {
-      setLoading(true);
-      const data = query.trim()
-        ? await searchCatalog(query)
-        : genre === "Trending"
-        ? await trendingCatalog()
-        : await browseCatalog(genre);
-      if (id === reqId.current) {
-        setResults(data);
-        setLoading(false);
-      }
+      const data = await loadCatalogPage(category, query, 1);
+      if (id !== reqId.current) return;
+      seen.current = new Set(data.map((t) => t.id));
+      setResults(data);
+      setPage(1);
+      setDone(data.length === 0);
+      setLoading(false);
     };
     const t = setTimeout(run, query.trim() ? 350 : 0);
     return () => clearTimeout(t);
-  }, [query, genre]);
+  }, [query, category]);
 
-  const chips = ["Trending", ...BROWSE_GENRES];
+  // fetch the next page on demand and append (deduped)
+  const loadMore = useCallback(async () => {
+    if (loading || done) return;
+    const id = reqId.current;
+    setLoading(true);
+    const next = page + 1;
+    const data = await loadCatalogPage(category, query, next);
+    if (id !== reqId.current) return;
+    const fresh = data.filter((t) => !seen.current.has(t.id));
+    fresh.forEach((t) => seen.current.add(t.id));
+    setResults((r) => [...r, ...fresh]);
+    setPage(next);
+    if (data.length === 0 || next >= 500) setDone(true); // TMDB hard-caps at 500 pages
+    setLoading(false);
+  }, [loading, done, page, category, query]);
+
+  // infinite scroll: observe a sentinel near the bottom
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { rootMargin: "600px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadMore]);
+
+  const chips = query.trim() ? [] : CATEGORIES;
 
   return (
     <div className="pb-4">
@@ -57,15 +91,15 @@ export function Browse() {
         )}
       </div>
 
-      {/* genre chips (hidden while searching) */}
-      {!query.trim() && (
+      {/* category chips */}
+      {chips.length > 0 && (
         <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {chips.map((g) => (
             <button
               key={g}
-              onClick={() => setGenre(g)}
+              onClick={() => setCategory(g)}
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                genre === g
+                category === g
                   ? "bg-accent-gradient text-white shadow-glow"
                   : "border border-white/10 bg-white/5 text-white/60 hover:text-white"
               }`}
@@ -76,7 +110,7 @@ export function Browse() {
         </div>
       )}
 
-      {loading ? (
+      {results.length === 0 && loading ? (
         <div className="flex min-h-[40vh] items-center justify-center text-white/40">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
@@ -85,15 +119,21 @@ export function Browse() {
           <p className="text-sm">{query ? `No results for “${query}”` : "Nothing here yet."}</p>
         </div>
       ) : (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="grid grid-cols-3 gap-2.5"
-        >
-          {results.map((t) => (
-            <PosterCard key={t.id} title={t} />
-          ))}
-        </motion.div>
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-3 gap-2.5">
+            {results.map((t) => (
+              <PosterCard key={t.id} title={t} />
+            ))}
+          </motion.div>
+          {/* sentinel + loader */}
+          <div ref={sentinel} className="h-10" />
+          {loading && (
+            <div className="flex justify-center py-3 text-white/40">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          )}
+          {done && <p className="py-3 text-center text-[11px] text-white/30">That&apos;s everything 🎬</p>}
+        </>
       )}
     </div>
   );

@@ -19,7 +19,7 @@ import {
   subscribeCoupleChanges,
   trackPresence,
 } from "./live";
-import { ME, PARTNER, getTitle } from "./mock-data";
+import { ME, PARTNER, getTitle, pinTitles } from "./mock-data";
 import { getSupabase } from "./supabase";
 import type {
   ActivityEvent,
@@ -358,6 +358,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {}
   }, [state, ready]);
+
+  // pin any title the user has acted on so it always resolves, even after
+  // browsing thousands of others (the browsed cache is a capped LRU).
+  useEffect(() => {
+    if (!ready) return;
+    const ids = new Set<string>();
+    state.watchlist.forEach((w) => ids.add(w.titleId));
+    state.votes.forEach((v) => ids.add(v.titleId));
+    state.matches.forEach((m) => ids.add(m.titleId));
+    state.watched.forEach((w) => ids.add(w.titleId));
+    state.notes.forEach((n) => n.titleId && ids.add(n.titleId));
+    pinTitles(ids);
+  }, [state.watchlist, state.votes, state.matches, state.watched, state.notes, ready]);
 
   // LIVE: load couple slice from Supabase, then keep it fresh via realtime + presence
   useEffect(() => {
