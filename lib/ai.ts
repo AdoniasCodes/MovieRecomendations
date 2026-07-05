@@ -119,8 +119,14 @@ Return ONLY JSON of shape {"picks":[{"title":string,"year":number,"reason":strin
 
 // ---- Assistant ------------------------------------------------------------
 
-export async function getAssistant(query: string, audience: Audience): Promise<AIResult> {
-  const prompt = `The user asked: "${query}".
+export async function getAssistant(
+  query: string,
+  audience: Audience,
+  asker?: "panda" | "hermi"
+): Promise<AIResult> {
+  const askerName = asker === "hermi" ? "Hermi" : asker === "panda" ? "Panda" : null;
+  const askerLine = askerName ? `\nThe person asking right now is ${askerName}.` : "";
+  const prompt = `The user asked: "${query}".${askerLine}
 Recommend up to 4 titles ${audience === "together" ? "for the couple to watch together" : audience === "her" ? "for Amore" : "for Panda"}.
 Return ONLY JSON of shape {"intro":string,"picks":[{"title":string,"year":number,"reason":string}]}. intro <= 24 words, each reason <= 16 words.`;
   const json = (await geminiJSON(prompt)) as

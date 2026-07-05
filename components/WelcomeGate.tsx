@@ -1,28 +1,87 @@
 "use client";
 
-import { PinLogin } from "@/components/auth/PinLogin";
+import { IdentityPicker, PinPad } from "@/components/auth/PinLogin";
+import { getLastActivity } from "@/lib/activity";
 import { useAuth } from "@/lib/auth";
+import { setWhoami } from "@/lib/identity";
+import { PIN_IDENTITIES, type PinIdentity } from "@/lib/pin-accounts";
+import { getSupabase } from "@/lib/supabase";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-// Full-screen welcome splash shown on load. "Get in" → pick-who-you-are + PIN.
+const IDLE_MS = 3_600_000; // re-lock after 1h idle
+
+type Phase = "splash" | "pick" | "pin";
+
+// Full-screen welcome. The Panda/Hermi picker shows on EVERY app open; PIN only
+// when there's no valid session for the picked identity. Re-locks after long idle.
 export function WelcomeGate() {
   const auth = useAuth();
   const [entered, setEntered] = useState(false);
-  const [phase, setPhase] = useState<"splash" | "login">("splash");
+  const [phase, setPhase] = useState<Phase>("splash");
+  const [who, setWho] = useState<PinIdentity | null>(null);
 
-  // once they sign in from the login phase, drop them into the app
+  // DISPLAY identity follows the real session (session is the source of truth)
   useEffect(() => {
-    if (phase === "login" && auth.session) setEntered(true);
-  }, [phase, auth.session]);
+    const email = auth.session?.user.email;
+    if (!email) return;
+    const match = PIN_IDENTITIES.find((p) => p.email === email);
+    if (match) setWhoami(match.key);
+  }, [auth.session]);
+
+  // pick who you are → straight in, or PIN when a fresh sign-in is needed
+  const pick = useCallback(
+    async (id: PinIdentity) => {
+      setWhoami(id.key);
+      setWho(id);
+      const email = auth.session?.user.email;
+      if (email === id.email) {
+        setEntered(true); // already signed in as this identity → no PIN
+        return;
+      }
+      if (!auth.configured || !getSupabase()) {
+        setEntered(true); // demo mode (no Supabase) → enter directly
+        return;
+      }
+      if (auth.session && email !== id.email) {
+        await auth.signOut(); // signed in as the other identity → sign out first
+      }
+      setPhase("pin");
+    },
+    [auth]
+  );
+
+  // reconcile the PIN phase with a late-arriving session (loading race / persist)
+  useEffect(() => {
+    if (phase !== "pin" || !who) return;
+    const email = auth.session?.user.email;
+    if (email === who.email) setEntered(true);
+    else if (email && email !== who.email) auth.signOut();
+  }, [phase, who, auth]);
+
+  // idle re-lock: back to the picker after a long idle (identity stays remembered)
+  useEffect(() => {
+    if (!entered) return;
+    const check = () => {
+      if (Date.now() - getLastActivity() > IDLE_MS) {
+        setEntered(false);
+        setPhase("pick");
+      }
+    };
+    const iv = setInterval(check, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [entered]);
 
   if (entered) return null;
 
-  const getIn = () => {
-    // already signed in (persisted session)? straight in. otherwise → login.
-    if (auth.session) setEntered(true);
-    else setPhase("login");
-  };
+  const showLogin = phase !== "splash";
 
   return (
     <div className="fixed inset-0 z-[100] overflow-hidden bg-black">
@@ -32,7 +91,7 @@ export function WelcomeGate() {
         src="/couple.jpg"
         alt="Panda & Hermi"
         className={`absolute inset-0 h-full w-full object-cover transition-all duration-700 ${
-          phase === "login" ? "scale-110 opacity-25 blur-sm" : "opacity-100"
+          showLogin ? "scale-110 opacity-25 blur-sm" : "opacity-100"
         }`}
       />
       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/15 to-black/90" />
@@ -65,10 +124,11 @@ export function WelcomeGate() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35 }}
-              onClick={getIn}
-              className="w-full max-w-xs rounded-2xl bg-accent-gradient py-4 text-base font-bold text-white shadow-glow transition active:scale-95"
+              onClick={() => setPhase("pick")}
+              disabled={auth.loading}
+              className="w-full max-w-xs rounded-2xl bg-accent-gradient py-4 text-base font-bold text-white shadow-glow transition active:scale-95 disabled:opacity-60"
             >
-              Get in 💞
+              {auth.loading ? "Warming up…" : "Get in 💞"}
             </motion.button>
           </motion.div>
         ) : (
@@ -80,14 +140,16 @@ export function WelcomeGate() {
             className="relative flex h-full flex-col items-center justify-center gap-4 px-6"
           >
             <div className="w-full max-w-sm">
-              <PinLogin />
+              {phase === "pin" && who ? (
+                <PinPad
+                  who={who}
+                  onSuccess={() => setEntered(true)}
+                  onBack={() => { setWho(null); setPhase("pick"); }}
+                />
+              ) : (
+                <IdentityPicker onPick={pick} />
+              )}
             </div>
-            <button
-              onClick={() => setEntered(true)}
-              className="text-xs text-white/45 hover:text-white/70"
-            >
-              Just browse for now →
-            </button>
             <button
               onClick={() => setPhase("splash")}
               className="text-[11px] text-white/30 hover:text-white/60"

@@ -3,14 +3,19 @@
 import { PinLogin } from "@/components/auth/PinLogin";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { PosterCard } from "@/components/ui/PosterCard";
-import { ME, PARTNER, TASTE_SEED, getTitle } from "@/lib/mock-data";
+import { useWhoami } from "@/lib/identity";
+import { TASTE_AMORE, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import type { Title } from "@/lib/types";
 import { LogOut, RefreshCw } from "lucide-react";
 
+const prettify = (s: string) => s.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
 export default function ProfilePage() {
   const store = useStore();
-  const loved = TASTE_SEED.lovedTitleIds.map(getTitle).filter(Boolean) as Title[];
+  const who = useWhoami();
+  const taste = who === "hermi" ? TASTE_AMORE : TASTE_SEED;
+  const loved = taste.lovedTitleIds.map(getTitle).filter(Boolean) as Title[];
 
   const reset = () => {
     if (!confirm("Reset all watchlist, votes and matches? Your taste profile stays.")) return;
@@ -24,13 +29,13 @@ export default function ProfilePage() {
       <div className="flex items-center gap-4 pt-2">
         <span
           className="flex h-16 w-16 items-center justify-center rounded-2xl text-3xl ring-2 ring-white/15"
-          style={{ background: `${ME.color}33` }}
+          style={{ background: `${store.me.color}33` }}
         >
-          {ME.emoji}
+          {store.me.emoji}
         </span>
         <div>
-          <h1 className="text-2xl font-black tracking-tight">{ME.name}</h1>
-          <p className="text-sm text-white/45">Paired with {PARTNER.name} {PARTNER.emoji}</p>
+          <h1 className="text-2xl font-black tracking-tight">{store.me.name}</h1>
+          <p className="text-sm text-white/45">Paired with {store.partner.name} {store.partner.emoji}</p>
         </div>
       </div>
 
@@ -44,7 +49,7 @@ export default function ProfilePage() {
       <section>
         <h3 className="mb-2 text-base font-bold">Genres you love</h3>
         <div className="flex flex-wrap gap-2">
-          {TASTE_SEED.genres.map((g) => (
+          {taste.genres.map((g) => (
             <span key={g} className="chip chip-active text-xs">{g}</span>
           ))}
         </div>
@@ -53,8 +58,8 @@ export default function ProfilePage() {
       <section>
         <h3 className="mb-2 text-base font-bold">What you don&apos;t want</h3>
         <div className="flex flex-wrap gap-2">
-          {["Generic / low-quality", "Poorly written romance", "Predictable stories"].map((g) => (
-            <span key={g} className="chip text-xs text-white/55">🚫 {g}</span>
+          {taste.doNotWant.map((g) => (
+            <span key={g} className="chip text-xs text-white/55">🚫 {prettify(g)}</span>
           ))}
         </div>
       </section>

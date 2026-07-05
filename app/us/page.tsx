@@ -1,9 +1,9 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { ME, PARTNER, getTitle } from "@/lib/mock-data";
+import { getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
-import type { ActivityEvent, Title } from "@/lib/types";
+import type { ActivityEvent, Title, User } from "@/lib/types";
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 
@@ -51,7 +51,7 @@ export default function UsPage() {
       <div className="pt-1">
         <h1 className="text-2xl font-black tracking-tight">Us</h1>
         <p className="text-sm text-white/45">
-          {ME.emoji} {ME.name} & {PARTNER.name} {PARTNER.emoji}
+          {store.me.emoji} {store.me.name} & {store.partner.name} {store.partner.emoji}
         </p>
       </div>
 
@@ -123,7 +123,13 @@ export default function UsPage() {
         <h3 className="mb-3 text-base font-bold">Activity</h3>
         <div className="space-y-2">
           {store.activity.slice(0, 20).map((e) => (
-            <FeedRow key={e.id} e={e} latest={store.activity[0]?.createdAt ?? e.createdAt} />
+            <FeedRow
+              key={e.id}
+              e={e}
+              latest={store.activity[0]?.createdAt ?? e.createdAt}
+              me={store.me}
+              partner={store.partner}
+            />
           ))}
         </div>
       </section>
@@ -149,8 +155,8 @@ function Stat({ value, label, suffix = "" }: { value: number; label: string; suf
   );
 }
 
-function FeedRow({ e, latest }: { e: ActivityEvent; latest: number }) {
-  const actor = e.actorId === ME.id ? ME : PARTNER;
+function FeedRow({ e, latest, me, partner }: { e: ActivityEvent; latest: number; me: User; partner: User }) {
+  const actor = e.actorId === me.id ? me : partner;
   const t = e.titleId ? getTitle(e.titleId) : null;
   return (
     <div className="glass flex items-center gap-3 rounded-2xl p-3">

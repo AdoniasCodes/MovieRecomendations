@@ -7,7 +7,7 @@ import { getTitle } from "@/lib/mock-data";
 import { classics, hiddenGems, reseed, surpriseMe, tonightsPick } from "@/lib/recommend";
 import { useStore } from "@/lib/store";
 import { openTitleSheet } from "@/lib/title-sheet";
-import type { Scored, Title } from "@/lib/types";
+import type { Scored, Title, User } from "@/lib/types";
 import { motion } from "framer-motion";
 import { Dices, Play, Shuffle, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -82,7 +82,7 @@ export default function HomePage() {
 
   return (
     <div className="space-y-7">
-      <Header partnerName={store.partner.name} herOnline={store.herOnline} />
+      <Header me={store.me} partner={store.partner} herOnline={store.herOnline} />
 
       {/* Tonight's Pick hero */}
       <TonightHero pick={pick} onReshuffle={nextPick} />
@@ -130,7 +130,7 @@ export default function HomePage() {
   );
 }
 
-function Header({ partnerName, herOnline }: { partnerName: string; herOnline: boolean }) {
+function Header({ me, partner, herOnline }: { me: User; partner: User; herOnline: boolean }) {
   return (
     <div className="flex items-center justify-between pt-1">
       <div>
@@ -141,16 +141,16 @@ function Header({ partnerName, herOnline }: { partnerName: string; herOnline: bo
         <p className="mt-0.5 text-[11px] text-white/45">
           {herOnline ? (
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {partnerName} is online
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {partner.name} is online
             </span>
           ) : (
-            <span className="text-white/35">{partnerName} is offline</span>
+            <span className="text-white/35">{partner.name} is offline</span>
           )}
         </p>
       </div>
       <div className="flex -space-x-2">
-        <Bubble emoji="🐼" color="#7C3AED" />
-        <Bubble emoji="💞" color="#DB2777" online={herOnline} />
+        <Bubble emoji={me.emoji} color={me.color} />
+        <Bubble emoji={partner.emoji} color={partner.color} online={herOnline} />
       </div>
     </div>
   );

@@ -2,19 +2,17 @@
 
 import { Poster } from "@/components/ui/Poster";
 import type { AIResult, Pick } from "@/lib/ai";
+import { useWhoami } from "@/lib/identity";
 import { getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import { openTitleSheet } from "@/lib/title-sheet";
+import type { User } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { Send, Sparkles, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const SUGGESTIONS = [
-  "Something wholesome for us tonight",
-  "A cerebral crime film, low on blood",
-  "A Korean movie Hermi would love",
-  "A dark thriller just for me",
-];
+const greeting = (me: User) =>
+  `Hey ${me.name} ${me.emoji} — tell me the mood and I'll find something you'll both love. Try one of these:`;
 
 interface Msg {
   role: "user" | "ai";
@@ -25,15 +23,26 @@ interface Msg {
 
 export function AssistantButton() {
   const [open, setOpen] = useState(false);
-  const { pendingMatch } = useStore();
-  const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: "ai",
-      text: "Hey Panda 🐼 — tell me the mood and I'll find something you'll both love. Try one of these:",
-    },
-  ]);
+  const store = useStore();
+  const who = useWhoami();
+  const me = store.me;
+  const partner = store.partner;
+  const { pendingMatch } = store;
+  const [msgs, setMsgs] = useState<Msg[]>([{ role: "ai", text: greeting(me) }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const suggestions = [
+    "Something wholesome for us tonight",
+    "A cerebral crime film, low on blood",
+    `A Korean movie ${partner.name} would love`,
+    "A dark thriller just for me",
+  ];
+
+  // refresh the greeting once identity hydrates (only if chat hasn't started)
+  useEffect(() => {
+    setMsgs((m) => (m.length <= 1 ? [{ role: "ai", text: greeting(me) }] : m));
+  }, [me.name, me.emoji]);
 
   const ask = async (text: string) => {
     if (!text.trim() || loading) return;
@@ -44,7 +53,7 @@ export function AssistantButton() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: text, audience: "together" }),
+        body: JSON.stringify({ query: text, audience: "together", asker: who }),
       });
       const data: AIResult = await res.json();
       setMsgs((m) => [...m, { role: "ai", text: data.intro, picks: data.picks, source: data.source }]);
@@ -148,7 +157,7 @@ export function AssistantButton() {
 
                 {msgs.length <= 1 && (
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {SUGGESTIONS.map((s) => (
+                    {suggestions.map((s) => (
                       <button key={s} onClick={() => ask(s)} className="chip text-xs hover:bg-white/[0.08]">
                         {s}
                       </button>

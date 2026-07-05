@@ -1,6 +1,10 @@
 import { POSTERS } from "./posters";
 import type { Title, User } from "./types";
 
+// SEMANTIC-ID ANCHORS ONLY. ME.id ("me") / PARTNER.id ("her") are used all over
+// as stable identifiers — keep them. Their name/emoji/color here are just seed
+// defaults; DISPLAY identity is dynamic and comes from lib/identity.ts (store.me
+// / store.partner), which swaps who is "me" vs "her" for the current viewer.
 export const ME: User = { id: "me", name: "Panda", emoji: "🐼", color: "#7C3AED" };
 // Hermi 💞 (aka Mi Amore / LOML)
 export const PARTNER: User = { id: "her", name: "Hermi", emoji: "💞", color: "#DB2777" };

@@ -1,11 +1,14 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
+import { useStore } from "@/lib/store";
 import { Check, Copy, Heart, LogOut, Mail } from "lucide-react";
 import { useState } from "react";
 
 export function GoLive() {
   const auth = useAuth();
+  const store = useStore();
+  const partnerName = store.partner.name;
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [sent, setSent] = useState(false);
@@ -29,7 +32,7 @@ export function GoLive() {
     <section className="glass rounded-2xl p-4">
       <div className="flex items-center gap-2">
         <Heart className="h-4 w-4 text-accent-glow" />
-        <h3 className="text-sm font-bold">Go live with {auth.partner?.name ?? "Hermi"} 💞</h3>
+        <h3 className="text-sm font-bold">Go live with {auth.partner?.name ?? partnerName} 💞</h3>
         {auth.live && <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">LIVE</span>}
       </div>
 
@@ -102,7 +105,7 @@ export function GoLive() {
               disabled={busy}
               onClick={() => wrap(async () => {
                 const r = await auth.createCouple();
-                if (r.code) { setCode(r.code); setMsg(`Share ${r.code} with Hermi.`); }
+                if (r.code) { setCode(r.code); setMsg(`Share ${r.code} with ${partnerName}.`); }
                 return r;
               })}
               className="w-full rounded-xl bg-accent-gradient py-2.5 text-sm font-semibold active:scale-95 disabled:opacity-50"
@@ -136,7 +139,7 @@ export function GoLive() {
             {auth.partner ? (
               <>Paired with <span className="font-semibold">{auth.partner.name}</span> {auth.partner.emoji} — you&apos;re live 🎉</>
             ) : (
-              <>Couple code <span className="font-mono font-semibold">{auth.couple.code}</span> — share it so Hermi can join.</>
+              <>Couple code <span className="font-mono font-semibold">{auth.couple.code}</span> — share it so {partnerName} can join.</>
             )}
           </p>
           <p className="text-[11px] text-white/40">Signed in as {auth.user?.email}</p>

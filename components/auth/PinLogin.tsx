@@ -8,100 +8,75 @@ import { useEffect, useState } from "react";
 
 const PIN_LEN = 4;
 
-export function PinLogin() {
+// ---- the "Who's watching?" picker ----------------------------------------
+export function IdentityPicker({ onPick }: { onPick: (id: PinIdentity) => void }) {
+  return (
+    <section className="glass rounded-2xl p-4">
+      <h3 className="text-sm font-bold">Who&apos;s watching?</h3>
+      <p className="mt-1 text-xs text-white/45">Tap your name to jump in.</p>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        {PIN_IDENTITIES.map((id) => (
+          <button
+            key={id.key}
+            onClick={() => onPick(id)}
+            className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-5 transition active:scale-95 hover:border-accent/40"
+          >
+            <span
+              className="flex h-14 w-14 items-center justify-center rounded-full text-2xl"
+              style={{ background: `${id.color}33`, border: `1px solid ${id.color}66` }}
+            >
+              {id.emoji}
+            </span>
+            <span className="text-sm font-semibold">{id.name}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---- PIN entry (auto-submits when 4 digits are in) -----------------------
+export function PinPad({
+  who,
+  onSuccess,
+  onBack,
+}: {
+  who: PinIdentity;
+  onSuccess: () => void;
+  onBack?: () => void;
+}) {
   const auth = useAuth();
-  const [who, setWho] = useState<PinIdentity | null>(null);
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   // auto-submit once the PIN is complete
   useEffect(() => {
-    if (!who || pin.length !== PIN_LEN || busy) return;
+    if (pin.length !== PIN_LEN || busy) return;
     setBusy(true);
     setErr(null);
     auth.signInWithPin(who.email, pin).then((r) => {
       if (r.error) {
         setErr(r.error);
         setPin("");
+        setBusy(false);
+      } else {
+        onSuccess();
       }
-      setBusy(false);
     });
-  }, [pin, who, busy, auth]);
+  }, [pin, busy, who, auth, onSuccess]);
 
-  if (!auth.configured) return null;
-
-  // ---- signed in + live ----------------------------------------------------
-  if (auth.session) {
-    const meName = auth.profile?.name ?? "You";
-    return (
-      <section className="glass rounded-2xl p-4">
-        <div className="flex items-center gap-2">
-          <Heart className="h-4 w-4 text-accent-glow" />
-          <h3 className="text-sm font-bold">Together mode</h3>
-          {auth.live && (
-            <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-              LIVE
-            </span>
-          )}
-        </div>
-        <p className="mt-2 text-sm text-white/85">
-          You&apos;re {meName}
-          {auth.partner ? (
-            <>
-              {" "}— live with <span className="font-semibold">{auth.partner.name}</span> {auth.partner.emoji} 🎉
-            </>
-          ) : (
-            <> — waiting for your partner to hop on…</>
-          )}
-        </p>
-        <button
-          onClick={() => auth.signOut()}
-          className="mt-3 flex items-center gap-2 text-xs text-white/50 hover:text-white/80"
-        >
-          <LogOut className="h-4 w-4" /> Switch user
-        </button>
-      </section>
-    );
-  }
-
-  // ---- pick who you are ----------------------------------------------------
-  if (!who) {
-    return (
-      <section className="glass rounded-2xl p-4">
-        <h3 className="text-sm font-bold">Who&apos;s watching?</h3>
-        <p className="mt-1 text-xs text-white/45">Tap your name, then enter our PIN to go live together.</p>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {PIN_IDENTITIES.map((id) => (
-            <button
-              key={id.key}
-              onClick={() => { setWho(id); setErr(null); }}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-5 transition active:scale-95 hover:border-accent/40"
-            >
-              <span
-                className="flex h-14 w-14 items-center justify-center rounded-full text-2xl"
-                style={{ background: `${id.color}33`, border: `1px solid ${id.color}66` }}
-              >
-                {id.emoji}
-              </span>
-              <span className="text-sm font-semibold">{id.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  // ---- enter PIN -----------------------------------------------------------
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
   return (
     <section className="glass rounded-2xl p-4">
-      <button
-        onClick={() => { setWho(null); setPin(""); setErr(null); }}
-        className="text-[11px] text-white/40 hover:text-white/70"
-      >
-        ← not {who.name}?
-      </button>
+      {onBack && (
+        <button
+          onClick={() => { onBack(); setPin(""); setErr(null); }}
+          className="text-[11px] text-white/40 hover:text-white/70"
+        >
+          ← not {who.name}?
+        </button>
+      )}
       <div className="mt-2 flex flex-col items-center">
         <span className="text-3xl">{who.emoji}</span>
         <p className="mt-1 text-sm font-semibold">Hi {who.name} — enter our PIN</p>
@@ -150,4 +125,50 @@ export function PinLogin() {
       </div>
     </section>
   );
+}
+
+// ---- default surface for /profile: signed-in card, else pick + PIN -------
+export function PinLogin() {
+  const auth = useAuth();
+  const [who, setWho] = useState<PinIdentity | null>(null);
+
+  if (!auth.configured) return null;
+
+  // ---- signed in + live ----------------------------------------------------
+  if (auth.session) {
+    const meName = auth.profile?.name ?? "You";
+    return (
+      <section className="glass rounded-2xl p-4">
+        <div className="flex items-center gap-2">
+          <Heart className="h-4 w-4 text-accent-glow" />
+          <h3 className="text-sm font-bold">Together mode</h3>
+          {auth.live && (
+            <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+              LIVE
+            </span>
+          )}
+        </div>
+        <p className="mt-2 text-sm text-white/85">
+          You&apos;re {meName}
+          {auth.partner ? (
+            <>
+              {" "}— live with <span className="font-semibold">{auth.partner.name}</span> {auth.partner.emoji} 🎉
+            </>
+          ) : (
+            <> — waiting for your partner to hop on…</>
+          )}
+        </p>
+        <button
+          onClick={() => auth.signOut()}
+          className="mt-3 flex items-center gap-2 text-xs text-white/50 hover:text-white/80"
+        >
+          <LogOut className="h-4 w-4" /> Switch user
+        </button>
+      </section>
+    );
+  }
+
+  // ---- pick who you are, then PIN -----------------------------------------
+  if (!who) return <IdentityPicker onPick={setWho} />;
+  return <PinPad who={who} onSuccess={() => setWho(null)} onBack={() => setWho(null)} />;
 }

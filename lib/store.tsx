@@ -19,6 +19,7 @@ import {
   subscribeCoupleChanges,
   trackPresence,
 } from "./live";
+import { meUser, partnerUser, useWhoami } from "./identity";
 import { ME, PARTNER, getTitle, pinTitles } from "./mock-data";
 import { getSupabase } from "./supabase";
 import type {
@@ -328,6 +329,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [pendingMatchId, setPendingMatchId] = useState<string | null>(null);
   const clock = useClock();
+  const who = useWhoami(); // re-render + recompute me/partner when identity changes
 
   // ---- live mode (signed in + paired) ----
   const auth = useAuth();
@@ -445,7 +447,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "save", titleId: id, userId: ME.id, at, notifs: [] });
       if (ids && sb) {
         push.save(sb, ids, id);
-        push.notify(sb, ids, "watchlisted", `Panda saved ${title?.title} for you both`, id);
+        push.notify(sb, ids, "watchlisted", `${meUser().name} saved ${title?.title} for you both`, id);
       }
     },
     [clock, sb]
@@ -470,7 +472,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "status", titleId: id, status: s, at, notifs: [] });
       if (ids && sb) {
         push.status(sb, ids, id, s);
-        if (s === "watching") push.notify(sb, ids, "started", `Panda just started ${title?.title}`, id);
+        if (s === "watching") push.notify(sb, ids, "started", `${meUser().name} just started ${title?.title}`, id);
       }
     },
     [clock, sb]
@@ -517,7 +519,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "cinema", titleId: id, cinema: next, at, notifs: [] });
       if (ids && sb) {
         push.cinema(sb, ids, id, next);
-        if (next) push.notify(sb, ids, "cinema", `Panda wants to see ${title?.title} in cinemas 🎬`, id);
+        if (next) push.notify(sb, ids, "cinema", `${meUser().name} wants to see ${title?.title} in cinemas 🎬`, id);
       }
     },
     [clock, isCinema, sb]
@@ -530,11 +532,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const note: Note = { id: "note" + at, titleId: id, authorId: ME.id, text, createdAt: at };
       dispatch({
         type: "note", note,
-        notifs: ids ? [] : [mkNotif(at, "note", `Panda left a note on ${title?.title}`, id)],
+        notifs: ids ? [] : [mkNotif(at, "note", `${meUser().name} left a note on ${title?.title}`, id)],
       });
       if (ids && sb) {
         push.note(sb, ids, id, text);
-        push.notify(sb, ids, "note", `Panda left a note on ${title?.title}`, id);
+        push.notify(sb, ids, "note", `${meUser().name} left a note on ${title?.title}`, id);
       }
     },
     [clock, sb]
@@ -554,10 +556,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const ids = liveRef.current;
       dispatch({
         type: "startParty", titleId: id, at,
-        notifs: ids ? [] : [mkNotif(at, "started", `Panda started a watch-along of ${title?.title} 🍿`, id)],
+        notifs: ids ? [] : [mkNotif(at, "started", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id)],
       });
       if (ids && sb) {
-        push.notify(sb, ids, "started", `Panda started a watch-along of ${title?.title} 🍿`, id);
+        push.notify(sb, ids, "started", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id);
         push.startSession(sb, ids, id).then((sid) => {
           if (sid) dispatch({ type: "setSessionId", id: sid });
         });
@@ -610,7 +612,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // ---- LIVE: write my real vote; form a match only if Hermi already liked it ----
       if (liveIdsNow && sb) {
         dispatch({ type: "vote", vote: myVoteObj, activity: [], notifs: [] });
-        if (positive && title) push.notify(sb, liveIdsNow, "favorited", `Panda liked ${title.title}`, id);
+        if (positive && title) push.notify(sb, liveIdsNow, "favorited", `${meUser().name} liked ${title.title}`, id);
         pushVoteAndMaybeMatch(sb, liveIdsNow, id, value).then((matched) => {
           if (matched) {
             setPendingMatchId(matched);
@@ -639,8 +641,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<StoreCtx>(
     () => ({
       ...state,
-      me: ME,
-      partner: PARTNER,
+      me: meUser(),
+      partner: partnerUser(),
       ready,
       live,
       pendingMatch: pendingMatchId ? getTitle(pendingMatchId) ?? null : null,
@@ -674,7 +676,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       vote,
     }),
     [
-      state, ready, live, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
+      who, state, ready, live, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
       rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
       joinWatchParty, endWatchParty, sendReaction, setHerPresence, vote,

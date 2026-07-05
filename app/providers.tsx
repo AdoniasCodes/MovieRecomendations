@@ -8,10 +8,12 @@ import { TitleSheetHost } from "@/components/title/TitleSheet";
 import { WatchParty } from "@/components/watch/WatchParty";
 import { RegisterSW } from "@/components/pwa/RegisterSW";
 import { WelcomeGate } from "@/components/WelcomeGate";
+import { useActivityTracker } from "@/lib/activity";
 import { AuthProvider } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  useActivityTracker();
   return (
     <AuthProvider>
     <StoreProvider>

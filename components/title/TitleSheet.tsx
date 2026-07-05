@@ -123,8 +123,8 @@ function Body({ titleId }: { titleId: string }) {
           {t.cerebral && <Badge>🧠 Cerebral</Badge>}
           {t.hiddenGem && <Badge>💎 Hidden gem</Badge>}
           {t.classic && <Badge>🏛️ Classic</Badge>}
-          {myRating != null && <Badge>🐼 You · {myRating}/10</Badge>}
-          {herRecord?.rating != null && <Badge>💞 Amore · {herRecord.rating}/10</Badge>}
+          {myRating != null && <Badge>{store.me.emoji} You · {myRating}/10</Badge>}
+          {herRecord?.rating != null && <Badge>{store.partner.emoji} {store.partner.name} · {herRecord.rating}/10</Badge>}
         </div>
 
         {/* why */}
@@ -173,7 +173,7 @@ function Body({ titleId }: { titleId: string }) {
             label={cinema ? "On cinema list" : "Watch in cinema"}
           />
           <Action
-            onClick={() => store.nudge(`Panda's thinking about ${t.title} 👀`, t.id)}
+            onClick={() => store.nudge(`${store.me.name}'s thinking about ${t.title} 👀`, t.id)}
             icon={<Bell className="h-5 w-5" />}
             label={`Nudge ${store.partner.name}`}
           />
@@ -194,8 +194,8 @@ function Body({ titleId }: { titleId: string }) {
         <div>
           <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Watched by</p>
           <div className="flex gap-2">
-            <WatchedToggle who="me" emoji="🐼" name="Me" on={watchers.includes("me")} store={store} id={t.id} />
-            <WatchedToggle who="her" emoji="💞" name={store.partner.name} on={watchers.includes("her")} store={store} id={t.id} />
+            <WatchedToggle who="me" emoji={store.me.emoji} name="Me" on={watchers.includes("me")} store={store} id={t.id} />
+            <WatchedToggle who="her" emoji={store.partner.emoji} name={store.partner.name} on={watchers.includes("her")} store={store} id={t.id} />
           </div>
         </div>
 

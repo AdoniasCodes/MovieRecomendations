@@ -1,8 +1,8 @@
 "use client";
 
-import { ME, PARTNER, getTitle } from "@/lib/mock-data";
+import { getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
-import type { Reaction } from "@/lib/types";
+import type { Reaction, User } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -37,10 +37,12 @@ export function WatchParty() {
 
 function Body() {
   const store = useStore();
+  const me = store.me;
+  const partner = store.partner;
   const session = store.session!;
   const t = getTitle(session.titleId)!;
   const [input, setInput] = useState("");
-  const herHere = session.participants.includes(PARTNER.id);
+  const herHere = session.participants.includes(partner.id);
 
   return (
     <>
@@ -60,13 +62,13 @@ function Body() {
 
       {/* presence */}
       <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/[0.08] p-3 backdrop-blur">
-        <Avatar user={ME} online />
-        <Avatar user={PARTNER} online={herHere} />
+        <Avatar user={me} online />
+        <Avatar user={partner} online={herHere} />
         <p className="text-sm text-white/80">
           {herHere ? (
-            <>You & {PARTNER.name} are watching <span className="font-semibold">together</span> 💞</>
+            <>You & {partner.name} are watching <span className="font-semibold">together</span> 💞</>
           ) : (
-            <>Waiting for {PARTNER.name} to join…</>
+            <>Waiting for {partner.name} to join…</>
           )}
         </p>
       </div>
@@ -78,7 +80,7 @@ function Body() {
         <div className="absolute inset-x-0 bottom-0 max-h-[70%] space-y-2 overflow-y-auto p-3">
           <AnimatePresence initial={false}>
             {session.reactions.slice(-30).map((r) => (
-              <ReactionRow key={r.id} r={r} />
+              <ReactionRow key={r.id} r={r} me={me} partner={partner} />
             ))}
           </AnimatePresence>
           {session.reactions.length === 0 && (
@@ -111,7 +113,7 @@ function Body() {
               setInput("");
             }
           }}
-          placeholder={`Say something to ${PARTNER.name}…`}
+          placeholder={`Say something to ${partner.name}…`}
           className="flex-1 rounded-full bg-white/[0.12] px-4 py-3 text-sm outline-none backdrop-blur placeholder:text-white/45 focus:bg-white/[0.18]"
         />
         <button
@@ -129,9 +131,9 @@ function Body() {
   );
 }
 
-function ReactionRow({ r }: { r: Reaction }) {
-  const mine = r.by === ME.id;
-  const user = mine ? ME : PARTNER;
+function ReactionRow({ r, me, partner }: { r: Reaction; me: User; partner: User }) {
+  const mine = r.by === me.id;
+  const user = mine ? me : partner;
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -162,7 +164,7 @@ function ReactionRow({ r }: { r: Reaction }) {
   );
 }
 
-function Avatar({ user, online }: { user: typeof ME; online: boolean }) {
+function Avatar({ user, online }: { user: User; online: boolean }) {
   return (
     <span className="relative">
       <span
