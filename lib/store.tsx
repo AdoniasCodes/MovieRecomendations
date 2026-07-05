@@ -317,7 +317,6 @@ interface StoreCtx extends State {
   joinWatchParty: (userId: string) => void;
   endWatchParty: () => void;
   sendReaction: (content: string, kind?: "emoji" | "text", by?: string) => void;
-  setHerPresence: (online: boolean) => void;
   /** returns true if a match fired */
   vote: (id: string, value: VoteValue, context: Context) => boolean;
 }
@@ -585,7 +584,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
     [clock, sb]
   );
-  const setHerPresence = useCallback((online: boolean) => dispatch({ type: "presence", herOnline: online }), []);
   const nudge = useCallback(
     (text: string, titleId?: string) => {
       const at = clock();
@@ -672,14 +670,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       joinWatchParty,
       endWatchParty,
       sendReaction,
-      setHerPresence,
       vote,
     }),
     [
       who, state, ready, live, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
       rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
-      joinWatchParty, endWatchParty, sendReaction, setHerPresence, vote,
+      joinWatchParty, endWatchParty, sendReaction, vote,
     ]
   );
 

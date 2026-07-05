@@ -8,6 +8,7 @@ import type {
   Match, Note, Notification, Reaction, Vote, Watcher, WatchSession,
   WatchedRecord, WatchlistItem,
 } from "./types";
+import { getLastActivity } from "./activity";
 
 export interface Ids {
   couple: string;
@@ -182,21 +183,88 @@ export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: (
   };
 }
 
-/** track my presence on the couple channel; call onPartner(true/false) when the other's presence changes. */
+const HEARTBEAT_MS = 60_000; // how often we re-stamp our own presence + re-check hers
+const IDLE_LIMIT_MS = 60 * 60_000; // stop heartbeating after this long with no user activity
+const STALE_MS = 2.5 * 60_000; // a presence stamp older than this reads as "offline"
+
+/**
+ * Track my presence on the couple channel; call onPartner(true/false) when the
+ * other's online-ness changes. "Online" isn't just "has a presence entry" —
+ * Supabase presence only clears on a clean unmount/removeChannel, so a killed
+ * tab or backgrounded phone would otherwise look online forever. Instead each
+ * tracked entry carries a timestamp, and we treat it as stale (partner
+ * offline) once it's more than STALE_MS old, aging it out on a timer even if
+ * no join/leave/sync event ever fires for it.
+ */
 export function trackPresence(
   sb: SupabaseClient,
   ids: Ids,
   onPartner: (online: boolean) => void
 ): () => void {
   const ch = sb.channel(`presence:${ids.couple}`, { config: { presence: { key: ids.my } } });
-  ch.on("presence", { event: "sync" }, () => {
-    const state = ch.presenceState();
-    onPartner(Object.keys(state).some((k) => k !== ids.my));
-  });
+
+  let lastReported: boolean | null = null;
+  const evaluate = () => {
+    const state = ch.presenceState() as Record<string, Array<{ at?: number }>>;
+    let newestAt = 0;
+    for (const key of Object.keys(state)) {
+      if (key === ids.my) continue;
+      for (const entry of state[key]) {
+        const at = typeof entry.at === "number" ? entry.at : 0; // missing meta -> treat as stale
+        if (at > newestAt) newestAt = at;
+      }
+    }
+    const online = newestAt > 0 && Date.now() - newestAt < STALE_MS;
+    if (online !== lastReported) {
+      lastReported = online;
+      onPartner(online);
+    }
+  };
+
+  ch.on("presence", { event: "sync" }, evaluate);
+  ch.on("presence", { event: "join" }, evaluate);
+  ch.on("presence", { event: "leave" }, evaluate);
+
   ch.subscribe(async (status) => {
-    if (status === "SUBSCRIBED") await ch.track({ at: Date.now() });
+    if (status === "SUBSCRIBED") {
+      await ch.track({ at: Date.now() });
+      evaluate();
+    }
   });
+
+  // heartbeat: keep my stamp fresh while the tab is actually visible and I'm
+  // not idle for over an hour — this is what makes ME go "offline" to my
+  // partner after a long idle stretch even with the tab still open.
+  const heartbeat = setInterval(() => {
+    if (document.visibilityState === "visible" && Date.now() - getLastActivity() < IDLE_LIMIT_MS) {
+      ch.track({ at: Date.now() });
+    }
+  }, HEARTBEAT_MS);
+
+  // local re-evaluation: ages out a zombie presence entry (killed tab, force-
+  // quit app) even when no presence event ever tells us it's gone.
+  const freshness = setInterval(evaluate, HEARTBEAT_MS);
+
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") {
+      ch.untrack();
+    } else {
+      ch.track({ at: Date.now() });
+      evaluate();
+    }
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+
+  const onPageHide = () => {
+    ch.untrack();
+  };
+  window.addEventListener("pagehide", onPageHide);
+
   return () => {
+    clearInterval(heartbeat);
+    clearInterval(freshness);
+    document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("pagehide", onPageHide);
     sb.removeChannel(ch);
   };
 }
