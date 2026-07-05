@@ -135,7 +135,8 @@ export type NotificationType =
   | "matched"
   | "rated"
   | "nudge"
-  | "note";
+  | "note"
+  | "ai";
 
 export interface Notification {
   id: string;
@@ -152,6 +153,19 @@ export interface Vote {
   titleId: string;
   userId: string;
   value: VoteValue;
+  createdAt: number;
+}
+
+/** a shared Amore-AI chat message. The whole thread is couple data: both
+ * partners see the same conversation, live. (picks duplicates lib/ai.ts's Pick
+ * shape on purpose — types must not import the server-only ai module.) */
+export interface AiMessage {
+  id: string;
+  authorId: string; // "me" | "her" semantic
+  role: "user" | "ai";
+  text: string;
+  picks?: { id?: string; title: string; year?: number; reason: string; inCatalog?: boolean }[];
+  source?: "gemini" | "local";
   createdAt: number;
 }
 

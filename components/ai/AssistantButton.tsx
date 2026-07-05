@@ -1,34 +1,25 @@
 "use client";
 
 import { Poster } from "@/components/ui/Poster";
-import type { AIResult, Pick } from "@/lib/ai";
-import { useWhoami } from "@/lib/identity";
 import { getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import { openTitleSheet } from "@/lib/title-sheet";
 import type { User } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { Send, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const greeting = (me: User) =>
-  `Hey ${me.name} ${me.emoji} — tell me the mood and I'll find something you'll both love. Try one of these:`;
-
-interface Msg {
-  role: "user" | "ai";
-  text: string;
-  picks?: Pick[];
-  source?: "gemini" | "local";
-}
+  `Hey ${me.name} ${me.emoji}! Tell me the mood and I'll find something you'll both love. Try one of these:`;
 
 export function AssistantButton() {
   const [open, setOpen] = useState(false);
   const store = useStore();
-  const who = useWhoami();
   const me = store.me;
   const partner = store.partner;
   const { pendingMatch } = store;
-  const [msgs, setMsgs] = useState<Msg[]>([{ role: "ai", text: greeting(me) }]);
+  // the thread is shared couple data now — both partners see the same messages.
+  const msgs = store.aiMessages;
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -39,27 +30,11 @@ export function AssistantButton() {
     "A dark thriller just for me",
   ];
 
-  // refresh the greeting once identity hydrates (only if chat hasn't started)
-  useEffect(() => {
-    setMsgs((m) => (m.length <= 1 ? [{ role: "ai", text: greeting(me) }] : m));
-  }, [me.name, me.emoji]);
-
   const ask = async (text: string) => {
     if (!text.trim() || loading) return;
-    setMsgs((m) => [...m, { role: "user", text }]);
     setInput("");
     setLoading(true);
-    try {
-      const res = await fetch("/api/assistant", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: text, audience: "together", asker: who }),
-      });
-      const data: AIResult = await res.json();
-      setMsgs((m) => [...m, { role: "ai", text: data.intro, picks: data.picks, source: data.source }]);
-    } catch {
-      setMsgs((m) => [...m, { role: "ai", text: "Hmm, I couldn't think straight just now — try again?" }]);
-    }
+    await store.askAi(text);
     setLoading(false);
   };
 
@@ -107,8 +82,20 @@ export function AssistantButton() {
               </div>
 
               <div className="flex-1 space-y-4 overflow-y-auto p-4">
-                {msgs.map((m, i) => (
-                  <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
+                {/* synthetic greeting — always shown when the sheet opens, never persisted */}
+                <div>
+                  <div className="max-w-[88%] rounded-2xl rounded-bl-md bg-white/[0.06] px-4 py-2.5 text-sm text-white/85">
+                    {greeting(me)}
+                  </div>
+                </div>
+
+                {msgs.map((m) => (
+                  <div key={m.id} className={m.role === "user" ? "flex flex-col items-end" : ""}>
+                    {m.role === "user" && m.authorId === "her" && (
+                      <span className="mb-1 mr-1 text-[10px] text-white/45">
+                        {partner.emoji} {partner.name} asked
+                      </span>
+                    )}
                     <div
                       className={
                         m.role === "user"
@@ -155,7 +142,7 @@ export function AssistantButton() {
                   </div>
                 )}
 
-                {msgs.length <= 1 && (
+                {msgs.length === 0 && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     {suggestions.map((s) => (
                       <button key={s} onClick={() => ask(s)} className="chip text-xs hover:bg-white/[0.08]">

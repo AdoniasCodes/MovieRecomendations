@@ -19,12 +19,13 @@ import {
   subscribeCoupleChanges,
   trackPresence,
 } from "./live";
-import { meUser, partnerUser, useWhoami } from "./identity";
+import { getWhoami, meUser, partnerUser, useWhoami } from "./identity";
 import { dismissSession } from "./session-prefs";
 import { ME, PARTNER, getTitle, pinTitles } from "./mock-data";
 import { getSupabase } from "./supabase";
 import type {
   ActivityEvent,
+  AiMessage,
   Context,
   Match,
   Note,
@@ -53,6 +54,7 @@ interface State {
   notes: Note[];
   notifications: Notification[];
   session: WatchSession | null;
+  aiMessages: AiMessage[]; // shared Amore-AI chat thread (couple data)
   herOnline: boolean; // real Supabase presence in live mode; false otherwise
 }
 
@@ -67,7 +69,7 @@ function now() {
 // (live mode via Supabase). Solo/demo starts genuinely empty.
 const initialState: State = {
   watchlist: [], votes: [], matches: [], activity: [], ratings: {},
-  watched: [], notes: [], notifications: [], session: null, herOnline: false,
+  watched: [], notes: [], notifications: [], session: null, aiMessages: [], herOnline: false,
 };
 
 // same clean base for LIVE mode
@@ -93,6 +95,7 @@ type Action =
   | { type: "react"; reaction: Reaction }
   | { type: "presence"; herOnline: boolean }
   | { type: "setSessionId"; id: string }
+  | { type: "aiMessage"; msg: AiMessage }
   | { type: "activity"; event: ActivityEvent };
 
 function upsertWatched(list: WatchedRecord[], rec: WatchedRecord): WatchedRecord[] {
@@ -254,6 +257,12 @@ function reducer(state: State, action: Action): State {
       return state.session ? { ...state, session: { ...state.session, id: action.id } } : state;
     case "readNotifs":
       return { ...state, notifications: state.notifications.map((n) => (n.toId === ME.id ? { ...n, read: true } : n)) };
+    case "aiMessage": {
+      // thread is oldest-first; append, dedupe by id, keep the most recent 100.
+      if (state.aiMessages.some((m) => m.id === action.msg.id)) return state;
+      const next = [...state.aiMessages, action.msg];
+      return { ...state, aiMessages: next.length > 100 ? next.slice(next.length - 100) : next };
+    }
     case "activity":
       return { ...state, activity: [action.event, ...state.activity] };
     default:
@@ -323,6 +332,8 @@ interface StoreCtx extends State {
   sendReaction: (content: string, kind?: "emoji" | "text", by?: string) => void;
   /** returns true if a match fired */
   vote: (id: string, value: VoteValue, context: Context) => boolean;
+  // shared Amore-AI chat
+  askAi: (text: string) => Promise<void>;
 }
 
 const Ctx = createContext<StoreCtx | null>(null);
@@ -660,6 +671,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [clock, sb]
   );
 
+  const askAi = useCallback(
+    async (text: string): Promise<void> => {
+      const t = text.trim();
+      if (!t) return;
+      const ids = liveRef.current;
+
+      // 1) my question → optimistic local dispatch (+ mirror to Supabase if live)
+      const at = clock();
+      const userMsg: AiMessage = { id: "aiu" + at, authorId: ME.id, role: "user", text: t, createdAt: at };
+      dispatch({ type: "aiMessage", msg: userMsg });
+      if (ids && sb) push.aiMessage(sb, ids, { role: "user", body: t });
+
+      // 2) ask the assistant (same route/shape AssistantButton has always used)
+      try {
+        const res = await fetch("/api/assistant", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ query: t, audience: "together", asker: getWhoami() }),
+        });
+        const data = (await res.json()) as {
+          intro: string;
+          picks?: AiMessage["picks"];
+          source?: "gemini" | "local";
+        };
+        const aiAt = clock();
+        const aiMsg: AiMessage = {
+          id: "aia" + aiAt, authorId: ME.id, role: "ai",
+          text: data.intro, picks: data.picks, source: data.source, createdAt: aiAt,
+        };
+        dispatch({ type: "aiMessage", msg: aiMsg });
+        if (ids && sb) {
+          push.aiMessage(sb, ids, { role: "ai", body: data.intro, picks: data.picks, source: data.source });
+          // 3) let my partner know I poked Amore AI (one notification, no titleId)
+          const snip = t.length > 40 ? `${t.slice(0, 40)}…` : t;
+          push.notify(sb, ids, "ai", `${meUser().name} asked Amore AI about "${snip}"`);
+        }
+      } catch {
+        // 4) never let the sheet break — surface a friendly local error bubble
+        const errAt = clock();
+        dispatch({
+          type: "aiMessage",
+          msg: {
+            id: "aie" + errAt, authorId: ME.id, role: "ai",
+            text: "Hmm, I couldn't think straight just now. Try again?",
+            source: "local", createdAt: errAt,
+          },
+        });
+      }
+    },
+    [clock, sb]
+  );
+
   const value = useMemo<StoreCtx>(
     () => ({
       ...state,
@@ -696,12 +759,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       iStarted: startedThisMountRef.current,
       sendReaction,
       vote,
+      askAi,
     }),
     [
       who, state, ready, live, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
       rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
-      joinWatchParty, endWatchParty, sendReaction, vote,
+      joinWatchParty, endWatchParty, sendReaction, vote, askAi,
     ]
   );
 

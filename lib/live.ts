@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  Match, Note, Notification, Reaction, Vote, Watcher, WatchSession,
+  AiMessage, Match, Note, Notification, Reaction, Vote, Watcher, WatchSession,
   WatchedRecord, WatchlistItem,
 } from "./types";
 import { getLastActivity } from "./activity";
@@ -25,6 +25,7 @@ export interface CoupleSlice {
   notes: Note[];
   notifications: Notification[];
   session: WatchSession | null;
+  aiMessages: AiMessage[];
 }
 
 const ts = (s: string | null) => (s ? Date.parse(s) : 0);
@@ -39,7 +40,7 @@ export async function loadCoupleState(
   const who = (uid: string): Watcher => (uid === ids.my ? "me" : "her");
   const c = ids.couple;
 
-  const [wl, vt, mt, wd, nt, nf, ws] = await Promise.all([
+  const [wl, vt, mt, wd, nt, nf, ws, am] = await Promise.all([
     sb.from("watchlist").select("*").eq("couple_id", c),
     sb.from("votes").select("*").eq("couple_id", c),
     sb.from("matches").select("*").eq("couple_id", c),
@@ -49,6 +50,8 @@ export async function loadCoupleState(
     sb.from("watch_sessions").select("*").eq("couple_id", c).eq("active", true)
       .gte("started_at", new Date(Date.now() - 4 * 3600_000).toISOString())
       .order("started_at", { ascending: false }).limit(1),
+    // grab the LAST 100 by fetching newest-first then reversing to chronological
+    sb.from("ai_messages").select("*").eq("couple_id", c).order("created_at", { ascending: false }).limit(100),
   ]);
 
   const watchlist: WatchlistItem[] = (wl.data ?? []).map((r) => ({
@@ -70,6 +73,13 @@ export async function loadCoupleState(
     id: r.id, type: r.type, actorId: who(r.actor_id), toId: who(r.to_id), titleId: r.title_id ?? undefined,
     text: r.body, read: r.read, createdAt: ts(r.created_at),
   }));
+  // fetched newest-first (bounded to 100); reverse to oldest-first for the thread.
+  const aiMessages: AiMessage[] = (am.data ?? [])
+    .map((r) => ({
+      id: r.id, authorId: who(r.author_id), role: r.role, text: r.body,
+      picks: r.picks ?? undefined, source: r.source ?? undefined, createdAt: ts(r.created_at),
+    }))
+    .reverse();
 
   let session: WatchSession | null = null;
   const s = ws.data?.[0];
@@ -86,7 +96,7 @@ export async function loadCoupleState(
     };
   }
 
-  return { watchlist, votes, matches, watched, ratings, notes, notifications, session };
+  return { watchlist, votes, matches, watched, ratings, notes, notifications, session, aiMessages };
 }
 
 // ---- write mirrors (semantic -> uuid) ------------------------------------
@@ -151,6 +161,20 @@ export const push = {
       .eq("active", true),
   react: (sb: SupabaseClient, ids: Ids, sessionId: string, kind: string, content: string) =>
     sb.from("reactions").insert({ session_id: sessionId, couple_id: ids.couple, by_user: ids.my, kind, content }),
+  aiMessage: (
+    sb: SupabaseClient,
+    ids: Ids,
+    msg: {
+      role: "user" | "ai";
+      body: string;
+      picks?: { id?: string; title: string; year?: number; reason: string; inCatalog?: boolean }[];
+      source?: string;
+    }
+  ) =>
+    sb.from("ai_messages").insert({
+      couple_id: ids.couple, author_id: ids.my, role: msg.role, body: msg.body,
+      picks: msg.picks ?? null, source: msg.source ?? null,
+    }),
 };
 
 /** after my "like" vote, form a match if my partner already liked it. returns titleId if matched. */
@@ -179,7 +203,7 @@ export async function pushVoteAndMaybeMatch(
 
 // ---- realtime + presence -------------------------------------------------
 
-const COUPLE_TABLES = ["watchlist", "votes", "matches", "watched", "notes", "notifications", "watch_sessions", "reactions"];
+const COUPLE_TABLES = ["watchlist", "votes", "matches", "watched", "notes", "notifications", "watch_sessions", "reactions", "ai_messages"];
 
 export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: () => void): () => void {
   const ch = sb.channel(`couple-changes:${ids.couple}`);
