@@ -46,7 +46,9 @@ export async function loadCoupleState(
     sb.from("watched").select("*").eq("couple_id", c),
     sb.from("notes").select("*").eq("couple_id", c),
     sb.from("notifications").select("*").eq("couple_id", c).order("created_at", { ascending: false }).limit(80),
-    sb.from("watch_sessions").select("*").eq("couple_id", c).eq("active", true).order("started_at", { ascending: false }).limit(1),
+    sb.from("watch_sessions").select("*").eq("couple_id", c).eq("active", true)
+      .gte("started_at", new Date(Date.now() - 4 * 3600_000).toISOString())
+      .order("started_at", { ascending: false }).limit(1),
   ]);
 
   const watchlist: WatchlistItem[] = (wl.data ?? []).map((r) => ({
@@ -127,6 +129,12 @@ export const push = {
   readNotifs: (sb: SupabaseClient, ids: Ids) =>
     sb.from("notifications").update({ read: true }).eq("couple_id", ids.couple).eq("to_id", ids.my),
   startSession: async (sb: SupabaseClient, ids: Ids, titleId: string): Promise<string | null> => {
+    // never leave two active rows: retire any existing active session first.
+    await sb
+      .from("watch_sessions")
+      .update({ active: false, ended_at: new Date().toISOString() })
+      .eq("couple_id", ids.couple)
+      .eq("active", true);
     const { data } = await sb
       .from("watch_sessions")
       .insert({ couple_id: ids.couple, title_id: titleId, host_id: ids.my, active: true })
@@ -134,12 +142,15 @@ export const push = {
       .single();
     return data?.id ?? null;
   },
-  endSession: (sb: SupabaseClient, ids: Ids, sessionId?: string) =>
-    sessionId
-      ? sb.from("watch_sessions").update({ active: false }).eq("id", sessionId)
-      : sb.from("watch_sessions").update({ active: false }).eq("couple_id", ids.couple).eq("active", true),
+  // close ALL active rows for the couple (a duplicate/raced row can never linger
+  // and auto-open the overlay on next load).
+  endSession: (sb: SupabaseClient, ids: Ids) =>
+    sb.from("watch_sessions")
+      .update({ active: false, ended_at: new Date().toISOString() })
+      .eq("couple_id", ids.couple)
+      .eq("active", true),
   react: (sb: SupabaseClient, ids: Ids, sessionId: string, kind: string, content: string) =>
-    sb.from("reactions").insert({ session_id: sessionId, by_user: ids.my, kind, content }),
+    sb.from("reactions").insert({ session_id: sessionId, couple_id: ids.couple, by_user: ids.my, kind, content }),
 };
 
 /** after my "like" vote, form a match if my partner already liked it. returns titleId if matched. */
@@ -168,15 +179,15 @@ export async function pushVoteAndMaybeMatch(
 
 // ---- realtime + presence -------------------------------------------------
 
-const COUPLE_TABLES = ["watchlist", "votes", "matches", "watched", "notes", "notifications", "watch_sessions"];
+const COUPLE_TABLES = ["watchlist", "votes", "matches", "watched", "notes", "notifications", "watch_sessions", "reactions"];
 
 export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: () => void): () => void {
   const ch = sb.channel(`couple-changes:${ids.couple}`);
+  // every couple-scoped table (reactions now carries couple_id too) is filtered
+  // to this couple, so another couple's activity never triggers a refetch storm.
   for (const table of COUPLE_TABLES) {
     ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, onChange);
   }
-  // reactions has no couple_id column — listen broadly, RLS still guards reads on refetch
-  ch.on("postgres_changes", { event: "*", schema: "public", table: "reactions" }, onChange);
   ch.subscribe();
   return () => {
     sb.removeChannel(ch);

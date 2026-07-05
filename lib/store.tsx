@@ -20,6 +20,7 @@ import {
   trackPresence,
 } from "./live";
 import { meUser, partnerUser, useWhoami } from "./identity";
+import { dismissSession } from "./session-prefs";
 import { ME, PARTNER, getTitle, pinTitles } from "./mock-data";
 import { getSupabase } from "./supabase";
 import type {
@@ -316,6 +317,9 @@ interface StoreCtx extends State {
   startWatchParty: (id: string) => void;
   joinWatchParty: (userId: string) => void;
   endWatchParty: () => void;
+  /** true when the active session was started by me during this mount (open it
+   * full-screen); false for partner-started or rehydrated sessions (invite). */
+  iStarted: boolean;
   sendReaction: (content: string, kind?: "emoji" | "text", by?: string) => void;
   /** returns true if a match fired */
   vote: (id: string, value: VoteValue, context: Context) => boolean;
@@ -342,6 +346,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   liveRef.current = liveIds;
   const sessionIdRef = useRef<string | undefined>(undefined);
   sessionIdRef.current = state.session?.id;
+  // stable key for the current session in BOTH modes (demo rows have no db id).
+  const sessionKeyRef = useRef<string | undefined>(undefined);
+  sessionKeyRef.current = state.session
+    ? state.session.id ?? String(state.session.startedAt)
+    : undefined;
+  // true only when *I* started the currently-active session during THIS mount.
+  // Resets on reload (fresh ref) so a rehydrated own session reads as an invite,
+  // and on endParty so a re-fetched/raced row can't re-open as a takeover.
+  const startedThisMountRef = useRef(false);
 
   // demo hydrate (once)
   useEffect(() => {
@@ -352,11 +365,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setReady(true);
   }, []);
 
-  // persist — DEMO only (never clobber demo data while live)
+  // persist — DEMO only (never clobber demo data while live). Never persist the
+  // watch-along session: a demo watch-along must not survive a reload (its
+  // active=true would auto-open the overlay). Live sessions live in Supabase.
   useEffect(() => {
     if (!ready || liveRef.current) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, session: null }));
     } catch {}
   }, [state, ready]);
 
@@ -553,6 +568,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const at = clock();
       const title = getTitle(id);
       const ids = liveRef.current;
+      startedThisMountRef.current = true; // I initiated this one → open it directly
       dispatch({
         type: "startParty", titleId: id, at,
         notifs: ids ? [] : [mkNotif(at, "started", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id)],
@@ -560,7 +576,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (ids && sb) {
         push.notify(sb, ids, "started", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id);
         push.startSession(sb, ids, id).then((sid) => {
-          if (sid) dispatch({ type: "setSessionId", id: sid });
+          if (!sid) return;
+          // if the session was already cancelled before its id landed, close the
+          // stray row now so it can't linger active and resurrect the overlay.
+          if (sessionKeyRef.current) dispatch({ type: "setSessionId", id: sid });
+          else push.endSession(sb, ids);
         });
       }
     },
@@ -569,9 +589,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const joinWatchParty = useCallback((userId: string) => dispatch({ type: "joinParty", userId }), []);
   const endWatchParty = useCallback(() => {
     const ids = liveRef.current;
-    const sid = sessionIdRef.current;
+    // record dismissal of the current session id so the realtime race window (a
+    // refetch landing before the DB update commits) cannot re-open it.
+    const key = sessionKeyRef.current;
+    if (key) dismissSession(key);
+    startedThisMountRef.current = false;
     dispatch({ type: "endParty" });
-    if (ids && sb) push.endSession(sb, ids, sid);
+    if (ids && sb) push.endSession(sb, ids);
   }, [sb]);
   const sendReaction = useCallback(
     (content: string, kind: "emoji" | "text" = "emoji", by?: string) => {
@@ -669,6 +693,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       startWatchParty,
       joinWatchParty,
       endWatchParty,
+      iStarted: startedThisMountRef.current,
       sendReaction,
       vote,
     }),

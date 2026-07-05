@@ -68,6 +68,21 @@ try {
   const { data: rx } = await B.c.from("reactions").select("by_user,content").eq("session_id", sess.id);
   ok(rx.length === 2, `B sees both watch-along reactions (${rx.length})`);
 
+  // ---- session lifecycle: startSession retires the prior active row, so two
+  // consecutive starts never leave two active rows; endSession retires them all.
+  // (mirrors push.startSession / push.endSession in lib/live.ts) ----
+  const startSession = async () => {
+    await A.c.from("watch_sessions").update({ active: false, ended_at: new Date().toISOString() }).eq("couple_id", cid).eq("active", true);
+    await A.c.from("watch_sessions").insert({ couple_id: cid, title_id: T, host_id: A.id, active: true });
+  };
+  await startSession();
+  await startSession();
+  const activeAfter = await A.c.from("watch_sessions").select("id").eq("couple_id", cid).eq("active", true);
+  ok(activeAfter.data.length === 1, `exactly 1 active session after two starts (${activeAfter.data.length})`);
+  await A.c.from("watch_sessions").update({ active: false, ended_at: new Date().toISOString() }).eq("couple_id", cid).eq("active", true);
+  const activeEnded = await A.c.from("watch_sessions").select("id").eq("couple_id", cid).eq("active", true);
+  ok(activeEnded.data.length === 0, `0 active sessions after end (${activeEnded.data.length})`);
+
   // RLS: stranger sees nothing
   const S = await signIn(`live.stranger.${Date.now()}@gmail.com`);
   ok((await S.c.from("watchlist").select("*").eq("couple_id", cid)).data.length === 0, "stranger sees 0 (RLS isolates)");

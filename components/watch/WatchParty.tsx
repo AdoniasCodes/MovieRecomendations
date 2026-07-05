@@ -2,24 +2,61 @@
 
 import { getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
+import { dismissSession, getDismissedSessions } from "@/lib/session-prefs";
 import type { Reaction, User } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { Send, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { PartyInvite } from "./PartyInvite";
 
 const QUICK = ["❤️", "😂", "😮", "😍", "🍿", "🔥", "🥹", "👀"];
 
 export function WatchParty() {
   const store = useStore();
   const session = store.session;
-  const active = !!session?.active;
 
-  // No simulated partner. In live mode the real Hermi joins + reacts via
-  // Supabase Realtime; solo, the session simply waits for her.
+  // A partner-started (or reload-rehydrated own) session must never take over
+  // the screen. It shows an invite card until I explicitly Join. Only a session
+  // I accepted this mount — by starting it (store.iStarted) or by tapping Join —
+  // renders full-screen. Dismissal (Later / end) always wins over both.
+  const [accepted, setAccepted] = useState<string | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<string[]>(getDismissedSessions);
 
-  if (!session || !active) return null;
+  // stable key in both modes: db row id when live, startedAt when demo.
+  const key = session?.active ? session.id ?? String(session.startedAt) : null;
+
+  // re-read this device's dismissed list whenever the active session changes.
+  useEffect(() => {
+    setDismissedIds(getDismissedSessions());
+  }, [key]);
+
+  const handleJoin = useCallback(() => {
+    if (!key) return;
+    store.joinWatchParty(store.me.id);
+    setAccepted(key);
+  }, [key, store]);
+
+  const handleLater = useCallback(() => {
+    if (!key) return;
+    dismissSession(key);
+    setDismissedIds((d) => (d.includes(key) ? d : [...d, key]));
+  }, [key]);
+
+  const handleEnd = useCallback(() => {
+    if (key) setDismissedIds((d) => (d.includes(key) ? d : [...d, key]));
+    setAccepted(null);
+    store.endWatchParty(); // also persists dismissal + closes every active row
+  }, [key, store]);
+
+  if (!session || !key) return null;
+  if (dismissedIds.includes(key)) return null; // Later / ended → hidden, stays hidden
   const t = getTitle(session.titleId);
   if (!t) return null;
+
+  const takeover = (session.hostId === "me" && store.iStarted) || accepted === key;
+  if (!takeover) {
+    return <PartyInvite partner={store.partner} title={t} onJoin={handleJoin} onLater={handleLater} />;
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-center">
@@ -29,13 +66,13 @@ export function WatchParty() {
       />
       <div className="absolute inset-0 bg-black/55 backdrop-blur-md" />
       <div className="relative z-10 flex h-full w-full max-w-md flex-col px-4 pb-4 pt-5">
-        <Body />
+        <Body onEnd={handleEnd} />
       </div>
     </div>
   );
 }
 
-function Body() {
+function Body({ onEnd }: { onEnd: () => void }) {
   const store = useStore();
   const me = store.me;
   const partner = store.partner;
@@ -53,7 +90,7 @@ function Body() {
           <h2 className="text-2xl font-black leading-tight">{t.title}</h2>
         </div>
         <button
-          onClick={() => store.endWatchParty()}
+          onClick={onEnd}
           className="glass flex h-9 w-9 items-center justify-center rounded-full"
         >
           <X className="h-4 w-4" />
