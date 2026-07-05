@@ -3,7 +3,7 @@
 // The taste fields TMDB doesn't have (violence/cerebral/international) are inferred
 // from genres + language per the couple's taste brief (see context.md §2).
 import "server-only";
-import type { Era, Energy, Commitment, MediaType, Title, Vibe, Feeling } from "./types";
+import type { Era, Energy, Commitment, MediaFilter, MediaType, Title, Vibe, Feeling } from "./types";
 
 const BASE = "https://api.themoviedb.org/3";
 
@@ -218,26 +218,29 @@ function mapList(results: RawTmdb[], forceType?: MediaType): Title[] {
 }
 
 // ---- public API -----------------------------------------------------------
-export async function searchTmdb(query: string, page = 1): Promise<Title[]> {
+export async function searchTmdb(query: string, page = 1, media: MediaFilter = "both"): Promise<Title[]> {
   if (!query.trim()) return [];
   const data = await tmdb("/search/multi", { query, page: String(page) });
-  return mapList(data.results);
+  const results: RawTmdb[] =
+    media === "both" ? data.results : (data.results ?? []).filter((r: RawTmdb) => r.media_type === media);
+  return mapList(results);
 }
 
-export async function trendingTmdb(page = 1): Promise<Title[]> {
-  const data = await tmdb("/trending/all/week", { page: String(page) });
-  return mapList(data.results);
+export async function trendingTmdb(page = 1, media: MediaFilter = "both"): Promise<Title[]> {
+  const path = media === "both" ? "/trending/all/week" : `/trending/${media}/week`;
+  const data = await tmdb(path, { page: String(page) });
+  return mapList(data.results, media === "both" ? undefined : media);
 }
 
-/** Browse by our genre label (movies + tv blended), newest/most-popular first. */
-export async function browseTmdb(genre: string, page = 1): Promise<Title[]> {
+/** Browse by our genre label (movies + tv blended, or narrowed to one), newest/most-popular first. */
+export async function browseTmdb(genre: string, page = 1, media: MediaFilter = "both"): Promise<Title[]> {
   const movieId = Object.entries(MOVIE_GENRES).find(([, n]) => n === genre)?.[0];
   const tvId = Object.entries(TV_GENRES).find(([, n]) => n === genre)?.[0];
   const [movies, tv] = await Promise.all([
-    movieId
+    movieId && media !== "tv"
       ? tmdb("/discover/movie", { with_genres: movieId, sort_by: "popularity.desc", page: String(page) })
       : Promise.resolve({ results: [] }),
-    tvId
+    tvId && media !== "movie"
       ? tmdb("/discover/tv", { with_genres: tvId, sort_by: "popularity.desc", page: String(page) })
       : Promise.resolve({ results: [] }),
   ]);
@@ -252,19 +255,19 @@ function blend(movies: { results?: RawTmdb[] }, tv: { results?: RawTmdb[] }): Ti
 }
 
 /** Highest-rated movies + shows (deep catalog, paginated). */
-export async function topRatedTmdb(page = 1): Promise<Title[]> {
+export async function topRatedTmdb(page = 1, media: MediaFilter = "both"): Promise<Title[]> {
   const [m, t] = await Promise.all([
-    tmdb("/movie/top_rated", { page: String(page) }),
-    tmdb("/tv/top_rated", { page: String(page) }),
+    media !== "tv" ? tmdb("/movie/top_rated", { page: String(page) }) : Promise.resolve({ results: [] }),
+    media !== "movie" ? tmdb("/tv/top_rated", { page: String(page) }) : Promise.resolve({ results: [] }),
   ]);
   return blend(m, t);
 }
 
 /** Freshly released / currently airing (the "latest" surface), paginated. */
-export async function latestTmdb(page = 1): Promise<Title[]> {
+export async function latestTmdb(page = 1, media: MediaFilter = "both"): Promise<Title[]> {
   const [m, t] = await Promise.all([
-    tmdb("/movie/now_playing", { page: String(page) }),
-    tmdb("/tv/on_the_air", { page: String(page) }),
+    media !== "tv" ? tmdb("/movie/now_playing", { page: String(page) }) : Promise.resolve({ results: [] }),
+    media !== "movie" ? tmdb("/tv/on_the_air", { page: String(page) }) : Promise.resolve({ results: [] }),
   ]);
   return blend(m, t);
 }

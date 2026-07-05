@@ -1,5 +1,8 @@
 export type MediaType = "movie" | "tv";
 
+/** user-facing catalog filter: "both" blends movies + tv, or narrow to one. */
+export type MediaFilter = "both" | "movie" | "tv";
+
 export type Vibe =
   | "mind-blowing"
   | "dark"

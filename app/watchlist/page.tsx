@@ -4,7 +4,7 @@ import { PosterCard } from "@/components/ui/PosterCard";
 import { cn } from "@/lib/cn";
 import { getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
-import type { Title, Watcher, WatchStatus } from "@/lib/types";
+import type { MediaFilter, Title, Watcher, WatchStatus } from "@/lib/types";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -25,14 +25,23 @@ const WHO: { key: Watcher | "both"; label: string }[] = [
   { key: "her", label: "💞 Amore" },
 ];
 
+const MEDIA_FILTERS: { key: MediaFilter; label: string }[] = [
+  { key: "both", label: "Both" },
+  { key: "movie", label: "🎬 Movies" },
+  { key: "tv", label: "📺 Series" },
+];
+
 export default function WatchlistPage() {
   const store = useStore();
   const [filter, setFilter] = useState<Filter>("matches");
   const [who, setWho] = useState<Watcher | "both">("both");
+  const [media, setMedia] = useState<MediaFilter>("both");
+
+  const matchesMedia = (t: Title) => media === "both" || t.mediaType === media;
 
   const matchTitles = useMemo(
-    () => store.matches.map((m) => getTitle(m.titleId)).filter(Boolean) as Title[],
-    [store.matches]
+    () => (store.matches.map((m) => getTitle(m.titleId)).filter(Boolean) as Title[]).filter(matchesMedia),
+    [store.matches, media]
   );
 
   // who watched a title, for the rewatch browser
@@ -46,8 +55,8 @@ export default function WatchlistPage() {
     return [...ids.entries()]
       .filter(([, ws]) => (who === "both" ? true : ws.includes(who)))
       .map(([id, ws]) => ({ title: getTitle(id), ws }))
-      .filter((x) => x.title) as { title: Title; ws: Watcher[] }[];
-  }, [store.watched, who]);
+      .filter((x) => x.title && matchesMedia(x.title)) as { title: Title; ws: Watcher[] }[];
+  }, [store.watched, who, media]);
 
   const items = useMemo(() => {
     if (filter === "matches")
@@ -56,12 +65,12 @@ export default function WatchlistPage() {
       return store.watchlist
         .filter((w) => w.cinema)
         .map((w) => ({ title: getTitle(w.titleId), status: w.status, badge: "🎬" }))
-        .filter((x) => x.title) as { title: Title; status: WatchStatus; badge: string }[];
+        .filter((x) => x.title && matchesMedia(x.title)) as { title: Title; status: WatchStatus; badge: string }[];
     return store.watchlist
       .filter((w) => filter === "all" || w.status === filter)
       .map((w) => ({ title: getTitle(w.titleId), status: w.status, badge: w.cinema ? "🎬" : undefined }))
-      .filter((x) => x.title) as { title: Title; status: WatchStatus; badge?: string }[];
-  }, [filter, store.watchlist, matchTitles]);
+      .filter((x) => x.title && matchesMedia(x.title)) as { title: Title; status: WatchStatus; badge?: string }[];
+  }, [filter, store.watchlist, matchTitles, media]);
 
   return (
     <div className="space-y-5">
@@ -81,6 +90,19 @@ export default function WatchlistPage() {
             className={cn("chip shrink-0", filter === f.key && "chip-active")}
           >
             {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* movie / series filter */}
+      <div className="flex gap-2">
+        {MEDIA_FILTERS.map((m) => (
+          <button
+            key={m.key}
+            onClick={() => setMedia(m.key)}
+            className={cn("chip flex flex-1 items-center justify-center text-center text-xs", media === m.key && "chip-active")}
+          >
+            {m.label}
           </button>
         ))}
       </div>

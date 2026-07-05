@@ -1,18 +1,26 @@
 "use client";
 
 import { PosterCard } from "@/components/ui/PosterCard";
+import { cn } from "@/lib/cn";
 import { loadCatalogPage } from "@/lib/catalog";
 import { BROWSE_GENRES } from "@/lib/tmdb-genres";
-import type { Title } from "@/lib/types";
+import type { MediaFilter, Title } from "@/lib/types";
 import { motion } from "framer-motion";
 import { Loader2, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const CATEGORIES = ["Trending", "Top Rated", "New", ...BROWSE_GENRES];
 
+const MEDIA_FILTERS: { key: MediaFilter; label: string }[] = [
+  { key: "both", label: "Both" },
+  { key: "movie", label: "🎬 Movies" },
+  { key: "tv", label: "📺 Series" },
+];
+
 export function Browse() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Trending");
+  const [media, setMedia] = useState<MediaFilter>("both");
   const [results, setResults] = useState<Title[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -20,12 +28,12 @@ export function Browse() {
   const reqId = useRef(0);
   const seen = useRef(new Set<string>());
 
-  // (re)load page 1 whenever the query or category changes (search debounced)
+  // (re)load page 1 whenever the query, category, or media filter changes (search debounced)
   useEffect(() => {
     const id = ++reqId.current;
     setLoading(true);
     const run = async () => {
-      const data = await loadCatalogPage(category, query, 1);
+      const data = await loadCatalogPage(category, query, 1, media);
       if (id !== reqId.current) return;
       seen.current = new Set(data.map((t) => t.id));
       setResults(data);
@@ -35,7 +43,7 @@ export function Browse() {
     };
     const t = setTimeout(run, query.trim() ? 350 : 0);
     return () => clearTimeout(t);
-  }, [query, category]);
+  }, [query, category, media]);
 
   // fetch the next page on demand and append (deduped)
   const loadMore = useCallback(async () => {
@@ -43,7 +51,7 @@ export function Browse() {
     const id = reqId.current;
     setLoading(true);
     const next = page + 1;
-    const data = await loadCatalogPage(category, query, next);
+    const data = await loadCatalogPage(category, query, next, media);
     if (id !== reqId.current) return;
     const fresh = data.filter((t) => !seen.current.has(t.id));
     fresh.forEach((t) => seen.current.add(t.id));
@@ -51,7 +59,7 @@ export function Browse() {
     setPage(next);
     if (data.length === 0 || next >= 500) setDone(true); // TMDB hard-caps at 500 pages
     setLoading(false);
-  }, [loading, done, page, category, query]);
+  }, [loading, done, page, category, query, media]);
 
   // infinite scroll: observe a sentinel near the bottom
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -89,6 +97,19 @@ export function Browse() {
             <X className="h-4 w-4" />
           </button>
         )}
+      </div>
+
+      {/* movie / series filter */}
+      <div className="mb-3 flex gap-2">
+        {MEDIA_FILTERS.map((m) => (
+          <button
+            key={m.key}
+            onClick={() => setMedia(m.key)}
+            className={cn("chip flex flex-1 items-center justify-center text-center", media === m.key && "chip-active")}
+          >
+            {m.label}
+          </button>
+        ))}
       </div>
 
       {/* category chips */}

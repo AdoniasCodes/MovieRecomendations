@@ -104,10 +104,20 @@ export function tooViolentForHer(t: Title): boolean {
   return t.violence > TASTE_AMORE.maxViolence;
 }
 
+// commitment answers that hard-lock the media type (duration-flavored answers
+// — single-evening/weekend-binge/long-term — stay a soft nudge via commitmentFit).
+const COMMITMENT_MEDIA_LOCK: Partial<Record<NonNullable<QuizAnswers["commitment"]>, Title["mediaType"]>> = {
+  movie: "movie",
+  "mini-series": "tv",
+  "full-series": "tv",
+};
+
 /** the hard, non-negotiable filters for an audience */
-function passesHardFilters(t: Title, aud: Audience): boolean {
+function passesHardFilters(t: Title, aud: Audience, commitment?: QuizAnswers["commitment"]): boolean {
   if (EXCLUDED_COUNTRIES.includes(t.country)) return false; // no Bollywood, ever
   if (aud !== "me" && tooViolentForHer(t)) return false; // Amore's no-gore rule
+  const lockedMedia = commitment ? COMMITMENT_MEDIA_LOCK[commitment] : undefined;
+  if (lockedMedia && t.mediaType !== lockedMedia) return false; // "Movie" pick shouldn't surface TV, and vice versa
   return true;
 }
 
@@ -221,7 +231,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export function recommend(a: QuizAnswers, opts: RecOptions = {}, limit = 20): Scored[] {
   const aud = audienceOf(a, opts);
   const pool = TITLES.filter(
-    (t) => !opts.excludeIds?.has(t.id) && passesHardFilters(t, aud)
+    (t) => !opts.excludeIds?.has(t.id) && passesHardFilters(t, aud, a.commitment)
   );
   return pool
     .map((t) => scoreTitle(t, a, opts))
