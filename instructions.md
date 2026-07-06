@@ -173,3 +173,17 @@ near-black; wholesome = warmer/brighter). Keep `voteAverage`/`popularity` realis
   state needs: (a) the server row reliably closed on cancel (close ALL active rows, not by id),
   (b) staleness filtering at hydrate time, (c) a local dismissed-set for the race window, and
   (d) "accepted this mount" gating so rehydration renders an invite, not a takeover.
+
+## §6. Verifying a Netlify deploy (no dashboard access needed)
+GitHub commit statuses/check-runs stay empty for this repo (Netlify not wired as a GitHub check)
+and no Netlify CLI auth exists locally. After pushing to main, wait 2-4 min then:
+`curl -s -o /dev/null -w "%{http_code}" https://amoremovies.netlify.app/<route>` (expect 200)
+and grep the HTML for content unique to the new change.
+
+## §7. After Dark engine: adding cards safely
+Cards live in `lib/afterdark/deck.ts`. Every card that needs skin declares
+`require.maxClothing` (3 dressed .. 0 nude), every card that strips declares an effect, and
+blindfold/restraint cards must come in put-on/take-off pairs (take-off weighted ~16 so state
+never sticks). After editing the deck, rerun the coherence sim (2000 games x 60 rounds calling
+draw/applyCard and asserting cardValid) with `npx tsx <sim script>`; it must print 0 violations
+and "cards never drawn: none".
