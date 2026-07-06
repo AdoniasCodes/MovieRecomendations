@@ -238,6 +238,21 @@ Root-caused and fixed the user-management complaints, plus two features and a cl
       `outputFileTracingRoot` set, couple.jpg compressed 444K→285K, em dashes swept from all
       user-visible copy. `icon-512.png` still ~480K (needs pngquant; low priority, loads once).
 
+## 5e. Phase 7 — "After Dark" (SHIPPED 2026-07-06)
+
+18+ couple's dice game, reachable from Profile ("After Dark 18+" card, not in the bottom nav).
+Fully client-side and isolated: `lib/afterdark/engine.ts` (pure state machine), `lib/afterdark/deck.ts`
+(112 cards, 4 heat levels: Spark flirting / Tease foreplay / Fire intimate / Ember light-BDSM),
+`components/afterdark/AfterDarkGame.tsx`, route `app/after-dark/page.tsx`. Design decisions:
+- Cards carry `require` (clothing min/max per player, blindfold/restraint flags) + `effects`
+  (strip one, blindfold, restrain...). The engine only draws valid cards, so the random flow
+  always makes physical sense. 18% of draws dip one heat below for variety. Repeat window 10.
+- Hard limits live in the CONTENT, not in checks: nothing anal (butt massage yes), no third
+  parties, rough stuff only at heat 4. Consent UX: gate screen on every entry, blocking Pause
+  check-in modal, 3 skips per player, heat rises only via a both-hold-3-seconds button.
+- No store.tsx involvement, no Supabase, no localStorage state (a night is ephemeral on purpose).
+- Verified: clean `npm run build`; 2000-game simulation (120k draws) with 0 constraint violations.
+
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.
 - Richer watch-along (synced playback position, video provider deep-links).

@@ -7,7 +7,8 @@ import { useWhoami } from "@/lib/identity";
 import { TASTE_AMORE, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import type { Title } from "@/lib/types";
-import { RefreshCw } from "lucide-react";
+import { Flame, RefreshCw } from "lucide-react";
+import Link from "next/link";
 
 const prettify = (s: string) => s.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
@@ -46,6 +47,21 @@ export default function ProfilePage() {
 
       {/* install as an app */}
       <InstallButton />
+
+      {/* after dark */}
+      <Link
+        href="/after-dark"
+        className="glass flex w-full items-center gap-3 rounded-2xl p-4 text-left text-sm transition hover:bg-white/[0.08]"
+      >
+        <Flame className="h-5 w-5 text-rose-400" />
+        <span>
+          <span className="flex items-center gap-2 font-semibold">
+            After Dark
+            <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold text-rose-300">18+</span>
+          </span>
+          <span className="text-xs text-white/45">A dice game for just the two of you</span>
+        </span>
+      </Link>
 
       {/* taste */}
       <section>

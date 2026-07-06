@@ -3,9 +3,25 @@
 _Updated: 2026-07-06_
 
 ## Current phase
-Phase 6 ("Real two-user UX") is SHIPPED: migration 0003 applied by Panda (verified: ai_messages,
-reactions.couple_id, watch_sessions.ended_at all live), all commits pushed, Netlify deploy from
-main. Next session starts from "Next steps" below.
+Phase 7 ("After Dark", the 18+ couple's dice game) is SHIPPED on top of Phase 6. All client-side,
+no migration needed. Entry: Profile > "After Dark 18+" card > /after-dark. Build clean, engine
+stress-tested (120k simulated draws, 0 coherence violations).
+
+## After Dark (Phase 7) key facts
+- `lib/afterdark/engine.ts` — pure engine: 4 heat levels (Spark/Tease/Fire/Ember), tag-based
+  state machine (clothing 3..0 per player, blindfold, restraints), cards declare require/effects
+  so consecutive cards never contradict. Fallback logic means a draw can never come up empty.
+- `lib/afterdark/deck.ts` — 112 cards (26/30/28/28 per heat). House limits baked into content:
+  two players only, nothing anal (butt massage allowed), light BDSM at heat 4 only.
+- `components/afterdark/AfterDarkGame.tsx` — consent gate (every entry), dice roll animation,
+  card flip, per-card timers, 3 skips per player, both-hold-3s "turn up the heat" button,
+  blocking Pause check-in modal, end-of-night recap. No store.tsx changes (seam untouched).
+- Coherence test script (rerunnable): scratchpad simulate.ts pattern — 2000 games x 60 rounds
+  asserting cardValid + clothing bounds + heat leaks.
+
+## Previous phase (6) summary
+Migration 0003 applied and verified live; identity picker, honest presence, watch-along invite
+card, Movie/Series filter, shared AI chat all shipped and deployed from main.
 
 ## Shipped this session (see context.md 5d for detail)
 1. Display identity: app knows Panda vs Hermi; picker on every open, PIN once per device switch.
