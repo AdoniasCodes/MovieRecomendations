@@ -5,9 +5,8 @@
 > `instructions.md` (the reusable how-to playbook).
 
 _Last updated: 2026-07-06. Phase 6 SHIPPED (real two-user UX: identity picker, honest presence,
-watch-along invite card, Movie/Series filter, shared AI chat, cleanup). Build clean.
-PENDING: apply `supabase/migrations/0003_sessions_ai.sql` in the Supabase SQL editor, then push
-the held commits to GitHub and verify the Netlify deploy. See handoff.md._
+watch-along invite card, Movie/Series filter, shared AI chat, cleanup). Build clean, migration
+0003 applied to the live DB (verified), pushed and deployed. See handoff.md._
 
 > Dev server note: the app currently serves on **http://localhost:3000** (it took 3000 after the
 > other local project's server stopped). Next picks the next free port — confirm via the page title.

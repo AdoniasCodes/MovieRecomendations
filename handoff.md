@@ -3,17 +3,9 @@
 _Updated: 2026-07-06_
 
 ## Current phase
-Phase 6 ("Real two-user UX") is code-complete and committed locally. **The last three commits are
-NOT pushed yet** (watch-along fix, shared AI chat, cleanup). They are held on purpose: the code
-expects schema changes that are not applied to the live Supabase DB yet.
-
-## THE ONE PENDING STEP (blocks push + deploy)
-Apply `supabase/migrations/0003_sessions_ai.sql` to the live project (`oodgafejoecyabvrhhew`):
-paste the file into the Supabase Dashboard SQL editor and run it (or authenticate the CLI with
-`supabase login` and let Claude apply it). It adds `watch_sessions.ended_at`,
-`reactions.couple_id` (+ backfill/index), and the `ai_messages` table (RLS + realtime).
-After it runs: `git push origin main`, then verify the Netlify deploy goes green.
-Why held: without the migration, live reactions inserts and AI chat sync would fail in prod.
+Phase 6 ("Real two-user UX") is SHIPPED: migration 0003 applied by Panda (verified: ai_messages,
+reactions.couple_id, watch_sessions.ended_at all live), all commits pushed, Netlify deploy from
+main. Next session starts from "Next steps" below.
 
 ## Shipped this session (see context.md 5d for detail)
 1. Display identity: app knows Panda vs Hermi; picker on every open, PIN once per device switch.
@@ -25,7 +17,7 @@ Why held: without the migration, live reactions inserts and AI chat sync would f
 7. Cleanup: OTP dead code + API.rtf deleted, profile Reset fixed, em-dash sweep, couple.jpg
    compressed, `server-only` pinned, `outputFileTracingRoot` set.
 
-## Next steps after the pending step
+## Next steps
 - Two-device E2E test (the script is in the plan/context): both log in, presence, invite card,
   sticky cancel, shared AI thread, idle re-lock.
 - Optional: compress `public/icon-512.png` (~480K; needs pngquant or similar, sips can't shrink it).
