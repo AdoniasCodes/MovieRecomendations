@@ -121,7 +121,7 @@ function Body({ onEnd }: { onEnd: () => void }) {
             ))}
           </AnimatePresence>
           {session.reactions.length === 0 && (
-            <p className="pb-2 text-center text-xs text-white/50">React together — tap an emoji or say something 👇</p>
+            <p className="pb-2 text-center text-xs text-white/50">React together! Tap an emoji or say something 👇</p>
           )}
         </div>
       </div>

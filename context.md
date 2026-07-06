@@ -4,8 +4,10 @@
 > meaningful changes (a feature ships, a decision is made, the plan shifts). Pair with
 > `instructions.md` (the reusable how-to playbook).
 
-_Last updated: 2026-06-20 — Phase 3 STARTED (Watch-Along + presence + PWA shipped; Supabase/TMDB
-foundation laid, awaiting credentials). Real Gemini AI is ON. Build clean, all routes 200._
+_Last updated: 2026-07-06. Phase 6 SHIPPED (real two-user UX: identity picker, honest presence,
+watch-along invite card, Movie/Series filter, shared AI chat, cleanup). Build clean.
+PENDING: apply `supabase/migrations/0003_sessions_ai.sql` in the Supabase SQL editor, then push
+the held commits to GitHub and verify the Netlify deploy. See handoff.md._
 
 > Dev server note: the app currently serves on **http://localhost:3000** (it took 3000 after the
 > other local project's server stopped). Next picks the next free port — confirm via the page title.
@@ -203,6 +205,39 @@ keep `next` >= 15.5.19. Secret-scan exempts `GEMINI_MODEL` (a model name, not a 
       (couple AM-427CD) by `scripts/setup-pin-accounts.mjs` (idempotent, run once). Signing in
       flips straight to **live mode** — real cross-device sync, real matches. Replaces the email-OTP
       card in Profile (OTP code paths remain in `lib/auth.tsx` but are no longer surfaced).
+
+## 5d. Phase 6 — "Real two-user UX" (SHIPPED 2026-07-05/06)
+
+Root-caused and fixed the user-management complaints, plus two features and a cleanup pass:
+
+- [x] **Display identity** (`lib/identity.ts`): the app now knows who is holding the phone.
+      Whoever signs in sees their own name/emoji everywhere (header, profile, notifications,
+      watch-along, AI greeting). Semantic ids "me"/"her" unchanged; only display swaps.
+- [x] **Welcome gate rework**: the Panda/Hermi picker shows on EVERY app open. PIN (9009) only
+      when no session exists for the picked identity; picking the other identity signs the old
+      session out first. "Just browse" anonymous mode removed. Splash no longer haunts navigation
+      (and the fake 1.4s Discover loader is gone).
+- [x] **1h idle re-lock** (`lib/activity.ts`): activity (taps/keys/visibility) is tracked,
+      throttled to one localStorage write per 30s. After 1h idle the gate re-shows the picker
+      (one tap back in, no PIN) and the presence heartbeat stops so the partner sees you offline.
+- [x] **Honest presence**: heartbeat re-track every 60s while visible + active; partner counts as
+      online only if their stamp is under 2.5 min old; leave events, tab hide, and pagehide untrack.
+      No more "Amore is online" lies.
+- [x] **Watch-along resurrection fixed**: partner-started sessions show an invite card (Join /
+      Later), never a takeover; Later and Cancel are permanent per device (`lib/session-prefs.ts`);
+      startSession retires previous active rows; endSession closes ALL active rows; stale rows
+      (>4h) never hydrate; the reactions realtime listener is couple-filtered; demo mode no longer
+      persists sessions across reloads. Migration: `supabase/migrations/0003_sessions_ai.sql`.
+- [x] **Movie/Series filter**: Both/Movies/Series segments on Discover Browse (drives the TMDB
+      fetchers server-side) and Watchlist (client-side); the mood-quiz commitment answer is now a
+      HARD media filter for movie / mini-series / full-series picks.
+- [x] **Shared AI chat**: `ai_messages` table + `store.askAi` named action; the Gemini thread is
+      couple data, both partners see it live with author attribution, partner gets a bell
+      notification; last 100 messages kept; works offline/demo via localStorage.
+- [x] **Cleanup**: dead email-OTP path deleted (GoLive.tsx + auth methods), API.rtf (plaintext key)
+      deleted, profile Reset now clears all app localStorage keys, `server-only` pinned,
+      `outputFileTracingRoot` set, couple.jpg compressed 444K→285K, em dashes swept from all
+      user-visible copy. `icon-512.png` still ~480K (needs pngquant; low priority, loads once).
 
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.

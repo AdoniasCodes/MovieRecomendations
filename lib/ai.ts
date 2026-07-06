@@ -167,10 +167,10 @@ function localAssistant(qRaw: string, audience: Audience): AIResult {
   const cards = recommend(a, { preferHiddenGems: hidden, preferClassics: classic, audience: aud }, 4);
   const lead = cards[0]?.title.title ?? "a few picks";
   const intro = hidden
-    ? `A few under-the-radar picks you probably haven't seen — starting with ${lead}.`
+    ? `A few under-the-radar picks you probably haven't seen, starting with ${lead}.`
     : a.vibe
-      ? `Going for a ${a.vibe.replace("-", " ")} mood — ${lead} fits beautifully:`
-      : `Based on your taste, here's what I'd queue up — ${lead} first:`;
+      ? `Going for a ${a.vibe.replace("-", " ")} mood. ${lead} fits beautifully:`
+      : `Based on your taste, here's what I'd queue up, ${lead} first:`;
   return {
     source: "local",
     intro,

@@ -26,8 +26,6 @@ interface AuthCtx {
   partner: Profile | null;
   /** logged in AND paired with someone */
   live: boolean;
-  signInWithOtp: (email: string) => Promise<{ error?: string }>;
-  verifyOtp: (email: string, token: string) => Promise<{ error?: string }>;
   /** "pick who you are" + shared PIN → password sign-in (no email). */
   signInWithPin: (email: string, pin: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
@@ -125,27 +123,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sb, session, couple, partner, loadAll]);
 
-  const signInWithOtp = useCallback(
-    async (email: string) => {
-      if (!sb) return { error: "Supabase not configured" };
-      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-      return error ? { error: error.message } : {};
-    },
-    [sb]
-  );
-  const verifyOtp = useCallback(
-    async (email: string, token: string) => {
-      if (!sb) return { error: "Supabase not configured" };
-      const { error } = await sb.auth.verifyOtp({ email, token: token.trim(), type: "email" });
-      return error ? { error: error.message } : {};
-    },
-    [sb]
-  );
   const signInWithPin = useCallback(
     async (email: string, pin: string) => {
       if (!sb) return { error: "Supabase not configured" };
       const { error } = await sb.auth.signInWithPassword({ email, password: derivePassword(pin) });
-      return error ? { error: "Wrong PIN — try again." } : {};
+      return error ? { error: "Wrong PIN. Try again." } : {};
     },
     [sb]
   );
@@ -184,15 +166,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       couple,
       partner,
       live: !!session && !!couple,
-      signInWithOtp,
-      verifyOtp,
       signInWithPin,
       signOut,
       createCouple,
       joinCouple,
       refresh,
     }),
-    [loading, session, profile, couple, partner, signInWithOtp, verifyOtp, signInWithPin, signOut, createCouple, joinCouple, refresh]
+    [loading, session, profile, couple, partner, signInWithPin, signOut, createCouple, joinCouple, refresh]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -81,7 +81,7 @@ function Body({ titleId }: { titleId: string }) {
       });
       setSim(await res.json());
     } catch {
-      setSim({ source: "local", intro: "Couldn't reach AI — try again.", picks: [] });
+      setSim({ source: "local", intro: "Couldn't reach AI. Try again.", picks: [] });
     }
     setSimLoading(false);
   }
@@ -257,7 +257,7 @@ function Body({ titleId }: { titleId: string }) {
                     setNoteText("");
                   }
                 }}
-                placeholder="Leave a note — “rewatch”, “check this out”…"
+                placeholder="Leave a note: “rewatch”, “check this out”…"
                 className="flex-1 rounded-full bg-white/[0.06] px-4 py-2.5 text-sm outline-none placeholder:text-white/35 focus:bg-white/[0.1]"
               />
               <button

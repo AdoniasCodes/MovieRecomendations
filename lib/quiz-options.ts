@@ -14,7 +14,7 @@ export const FEELINGS: { value: Feeling; label: string; emoji: string }[] = [
 ];
 
 export const CONTEXTS: { value: Context; label: string; emoji: string; sub: string }[] = [
-  { value: "together", label: "Together", emoji: "💞", sub: "Swipe as a couple — matches fire live" },
+  { value: "together", label: "Together", emoji: "💞", sub: "Swipe as a couple, matches fire live" },
   { value: "alone", label: "Alone", emoji: "🍿", sub: "Just for you tonight" },
 ];
 

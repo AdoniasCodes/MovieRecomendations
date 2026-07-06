@@ -82,7 +82,7 @@ export function MoodQuiz({ onDone }: { onDone: (a: QuizAnswers) => void }) {
           <p className="mb-6 text-sm text-white/45">
             {key === "context"
               ? "Together mode fires live matches."
-              : "Tap one — there's no wrong answer."}
+              : "Tap one, there's no wrong answer."}
           </p>
 
           {key === "feeling" && (

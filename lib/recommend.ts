@@ -202,16 +202,16 @@ function explain(
 
   // together / her get a couple-aware reason first
   if ((aud === "her" || aud === "together") && t.international) {
-    bits.push(`${t.language} cinema from ${t.country} — exactly Amore's kind of pick.`);
+    bits.push(`${t.language} cinema from ${t.country}, exactly Amore's kind of pick.`);
   } else if (aud === "together" && t.violence <= 2 && t.cerebral) {
-    bits.push("Low on blood, high on brains — a clean fit for you both.");
+    bits.push("Low on blood, high on brains. A clean fit for you both.");
   } else {
     const anchor = seedAnchor(t, aud);
     if (parts.genre > 0.45 && anchor) {
       bits.push(`Because you loved ${anchor.title}, this ${t.genres[0].toLowerCase()} pick is right in your lane.`);
     } else if (opts.similarTo) {
       const ref = getTitle(opts.similarTo);
-      if (ref) bits.push(`More like ${ref.title} — shared ${t.genres[0].toLowerCase()} DNA.`);
+      if (ref) bits.push(`More like ${ref.title}: shared ${t.genres[0].toLowerCase()} DNA.`);
     } else if (parts.vibe > 0.7 && a.vibe) {
       bits.push(`It nails the ${a.vibe.replace("-", " ")} vibe you're after.`);
     }
@@ -219,7 +219,7 @@ function explain(
 
   if (t.hiddenGem && opts.preferHiddenGems) bits.push("A hidden gem most people miss.");
   if (t.classic && opts.preferClassics) bits.push("A must-watch classic you shouldn't skip.");
-  if (t.voteAverage >= 8.4 && bits.length < 2) bits.push(`Critically loved — ${t.voteAverage.toFixed(1)}/10.`);
+  if (t.voteAverage >= 8.4 && bits.length < 2) bits.push(`Critically loved: ${t.voteAverage.toFixed(1)}/10.`);
 
   return bits.slice(0, 2).join(" ") || `A strong match for tonight's mood.`;
 }

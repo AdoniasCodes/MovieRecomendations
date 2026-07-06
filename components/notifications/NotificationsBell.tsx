@@ -71,7 +71,7 @@ export function NotificationsBell() {
 
               <div className="flex-1 space-y-2 overflow-y-auto p-4">
                 {store.notifications.length === 0 && (
-                  <p className="py-10 text-center text-sm text-white/40">Nothing yet — go like something 😉</p>
+                  <p className="py-10 text-center text-sm text-white/40">Nothing yet. Go like something 😉</p>
                 )}
                 {store.notifications.map((n) => (
                   <Row key={n.id} n={n} latest={latest} mine={n.actorId === store.me.id} />

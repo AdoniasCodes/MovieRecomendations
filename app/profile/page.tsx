@@ -7,7 +7,7 @@ import { useWhoami } from "@/lib/identity";
 import { TASTE_AMORE, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import type { Title } from "@/lib/types";
-import { LogOut, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 const prettify = (s: string) => s.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
@@ -19,7 +19,9 @@ export default function ProfilePage() {
 
   const reset = () => {
     if (!confirm("Reset all watchlist, votes and matches? Your taste profile stays.")) return;
-    localStorage.removeItem("amore-movies/v1");
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("amore-movies/"))
+      .forEach((key) => localStorage.removeItem(key));
     location.reload();
   };
 
@@ -84,10 +86,6 @@ export default function ProfilePage() {
             <span className="block font-semibold">Reset activity</span>
             <span className="text-xs text-white/45">Clear watchlist, votes & matches</span>
           </span>
-        </button>
-        <button className="glass flex w-full items-center gap-3 rounded-2xl p-4 text-left text-sm text-white/50 transition hover:bg-white/[0.08]">
-          <LogOut className="h-5 w-5" />
-          <span className="font-semibold">Sign out (demo)</span>
         </button>
       </section>
 

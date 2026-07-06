@@ -15,10 +15,10 @@ import { useEffect, useMemo, useState } from "react";
 
 /** a friendly "why" for a TMDB pool title, leaning on the taste brief */
 function whyFor(t: Title): string {
-  if (t.international && t.cerebral) return `A cerebral ${t.country} pick — the mind-game, not the carnage.`;
+  if (t.international && t.cerebral) return `A cerebral ${t.country} pick: the mind-game, not the carnage.`;
   if (t.international) return `${t.country} cinema you two might love.`;
-  if (t.cerebral) return `Cerebral ${(t.genres[0] ?? "mystery").toLowerCase()} — outsmart the story.`;
-  if (t.violence <= 1) return `Wholesome and easy — good for together.`;
+  if (t.cerebral) return `Cerebral ${(t.genres[0] ?? "mystery").toLowerCase()}. Outsmart the story.`;
+  if (t.violence <= 1) return `Wholesome and easy, good for together.`;
   if (t.genres.some((g) => ["Crime", "Thriller", "Mystery"].includes(g)))
     return `A gripping ${t.genres[0].toLowerCase()} for the dark-drama mood.`;
   return `Highly rated ${(t.genres[0] ?? "pick").toLowerCase()} you haven't watched yet.`;

@@ -150,3 +150,26 @@ Each `Title` needs: stable `id` (`"movie:<tmdbId>"`/`"tv:<tmdbId>"`), `mediaType
 `colorA`/`colorB` (poster gradient), optional `posterPath`. Phase 2 adds: `violence` (0–5),
 `country`, `language`, `international`. Pick `colorA`/`colorB` to evoke the title's mood (dark =
 near-black; wholesome = warmer/brighter). Keep `voteAverage`/`popularity` realistic.
+
+## 10. Two-user identity, idle, and per-device prefs (Phase 6 patterns)
+
+- **Display identity vs semantic identity.** Keep semantic ids ("me"/"her") as the data layer's
+  language and NEVER change them. Who is physically holding the device is a separate, tiny
+  external store (`lib/identity.ts`, useSyncExternalStore + localStorage "amore-movies/whoami",
+  getServerSnapshot returns the default so SSR matches). The auth session is the source of truth:
+  an effect maps session email to identity. UI reads `store.me` / `store.partner`.
+- **Idle lock.** `lib/activity.ts`: passive pointerdown/keydown/visibility listeners call
+  `touchActivity()`, throttled to one localStorage write ("amore-movies/last-activity") per 30s.
+  The gate checks on visibilitychange + a 60s interval; over the limit it re-shows the picker but
+  keeps the session, so re-entry is one tap.
+- **Honest presence = heartbeat + freshness, not socket lifetime.** Re-track `{ at: Date.now() }`
+  every 60s only while visible AND recently active; the reader computes online from the newest
+  foreign stamp being under 2.5 min old, re-evaluated on sync/join/leave AND a local interval so
+  zombie entries age out; untrack on hidden/pagehide. Report to the store only on state CHANGE.
+- **Per-device UI prefs live OUTSIDE the store seam.** Dismissed watch-along invites
+  (`lib/session-prefs.ts`, "amore-movies/dismissed-sessions", capped list) are device preferences,
+  not couple data; putting them in the synced store would wrongly propagate them to the partner.
+- **Overlay resurrection rule.** Any overlay whose visibility is derived from refetched server
+  state needs: (a) the server row reliably closed on cancel (close ALL active rows, not by id),
+  (b) staleness filtering at hydrate time, (c) a local dismissed-set for the race window, and
+  (d) "accepted this mount" gating so rehydration renders an invite, not a takeover.

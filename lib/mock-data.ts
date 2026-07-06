@@ -84,7 +84,7 @@ export const TITLES: Title[] = [
     runtime: 49, seasons: 5, genres: ["Crime", "Drama", "Thriller"], vibes: ["dark", "thrilling", "mind-blowing"],
     moods: ["intense", "excited"], energy: "full-attention", commitment: "full-series", voteAverage: 8.9, popularity: 96,
     hiddenGem: false, classic: true, violence: 4, country: "US", language: "English",
-    overview: "A chemistry teacher turns to making meth — and becomes something far worse.",
+    overview: "A chemistry teacher turns to making meth and becomes something far worse.",
     cast: ["Bryan Cranston", "Aaron Paul", "Anna Gunn"], colorA: "#3a4a2a", colorB: "#0a0a0a",
   }),
   t({
@@ -108,7 +108,7 @@ export const TITLES: Title[] = [
     runtime: 50, seasons: 2, genres: ["Drama", "Mystery", "Sci-Fi"], vibes: ["thought-provoking", "mysterious", "mind-blowing"],
     moods: ["curious", "intense"], energy: "full-attention", commitment: "full-series", voteAverage: 8.7, popularity: 90,
     hiddenGem: false, classic: false, violence: 1, cerebral: true, country: "US", language: "English",
-    overview: "Workers surgically split their memories between work and home — until the wall cracks.",
+    overview: "Workers surgically split their memories between work and home, until the wall cracks.",
     cast: ["Adam Scott", "Britt Lower", "Patricia Arquette"], colorA: "#1a2a33", colorB: "#0a0a0a",
   }),
   t({
@@ -268,7 +268,7 @@ export const TITLES: Title[] = [
     runtime: 132, genres: ["Drama", "Thriller", "Comedy"], vibes: ["thrilling", "thought-provoking", "dark"],
     moods: ["curious", "intense"], energy: "full-attention", commitment: "movie", voteAverage: 8.5, popularity: 89,
     hiddenGem: false, classic: false, violence: 3, cerebral: true, country: "South Korea", language: "Korean", international: true,
-    overview: "A poor family schemes its way into a rich household — then the basement opens.",
+    overview: "A poor family schemes its way into a rich household. Then the basement opens.",
     cast: ["Song Kang-ho", "Lee Sun-kyun", "Cho Yeo-jeong"], colorA: "#243224", colorB: "#0a0a0a",
   }),
   t({
@@ -442,7 +442,7 @@ export const TITLES: Title[] = [
     runtime: 90, seasons: 1, genres: ["Drama", "Comedy", "Family"], vibes: ["comfort", "cozy", "emotional"],
     moods: ["happy", "sad", "relaxing"], energy: "brain-off", commitment: "full-series", voteAverage: 9.0, popularity: 70,
     hiddenGem: true, classic: false, violence: 0, country: "South Korea", language: "Korean", international: true,
-    overview: "Five families on one Seoul alley in 1988 — warmth, first love, and growing up.",
+    overview: "Five families on one Seoul alley in 1988: warmth, first love, and growing up.",
     cast: ["Lee Hye-ri", "Ryu Jun-yeol", "Go Kyung-pyo"], colorA: "#4a3a2a", colorB: "#0a0a0a",
   }),
   t({
@@ -466,7 +466,7 @@ export const TITLES: Title[] = [
     runtime: 121, genres: ["Drama", "Crime"], vibes: ["emotional", "thought-provoking", "cozy"],
     moods: ["sad", "curious", "relaxing"], energy: "moderate", commitment: "movie", voteAverage: 8.0, popularity: 60,
     hiddenGem: true, classic: false, violence: 1, cerebral: true, country: "Japan", language: "Japanese", international: true,
-    overview: "A makeshift family scrapes by on small thefts — until a secret tests their bond.",
+    overview: "A makeshift family scrapes by on small thefts, until a secret tests their bond.",
     cast: ["Lily Franky", "Sakura Ando", "Kirin Kiki"], colorA: "#3a3424", colorB: "#0a0a0a",
   }),
   t({

@@ -123,7 +123,7 @@ export default function WatchlistPage() {
               ))}
             </div>
             <p className="mt-2 text-xs text-white/45">
-              Browse what {who === "her" ? "Amore has" : who === "me" ? "you've" : "you both have"} seen — tap any to
+              Browse what {who === "her" ? "Amore has" : who === "me" ? "you've" : "you both have"} seen. Tap any to
               rewatch, rate, or leave a note.
             </p>
           </div>
@@ -162,7 +162,7 @@ export default function WatchlistPage() {
 
 function Empty({ filter }: { filter: Filter }) {
   const copy: Record<Filter, { emoji: string; title: string; sub: string }> = {
-    matches: { emoji: "💞", title: "No matches yet", sub: "Swipe in Together mode — when you both like the same title, it lands here." },
+    matches: { emoji: "💞", title: "No matches yet", sub: "Swipe in Together mode. When you both like the same title, it lands here." },
     all: { emoji: "🍿", title: "Nothing saved yet", sub: "Save titles while you discover and they'll show up here." },
     cinema: { emoji: "🎬", title: "No cinema picks yet", sub: "Open any title and tap “Watch in cinema” for the ones worth the big screen." },
     watched: { emoji: "✅", title: "Nothing watched yet", sub: "Mark titles watched (by you or Amore) to build your rewatch shelf." },

@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Amore Movies",
     short_name: "Amore",
-    description: "A movie & series discovery hub built for two — swipe, match, watch together.",
+    description: "A movie & series discovery hub built for two: swipe, match, watch together.",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",

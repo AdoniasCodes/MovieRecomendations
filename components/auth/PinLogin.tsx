@@ -79,7 +79,7 @@ export function PinPad({
       )}
       <div className="mt-2 flex flex-col items-center">
         <span className="text-3xl">{who.emoji}</span>
-        <p className="mt-1 text-sm font-semibold">Hi {who.name} — enter our PIN</p>
+        <p className="mt-1 text-sm font-semibold">Hi {who.name}, enter our PIN</p>
 
         {/* dots */}
         <div className="mt-4 flex gap-3">
@@ -152,10 +152,10 @@ export function PinLogin() {
           You&apos;re {meName}
           {auth.partner ? (
             <>
-              {" "}— live with <span className="font-semibold">{auth.partner.name}</span> {auth.partner.emoji} 🎉
+              {" "}live with <span className="font-semibold">{auth.partner.name}</span> {auth.partner.emoji} 🎉
             </>
           ) : (
-            <> — waiting for your partner to hop on…</>
+            <>Waiting for your partner to hop on…</>
           )}
         </p>
         <button

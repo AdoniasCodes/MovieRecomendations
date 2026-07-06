@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Amore Movies — what should we watch?",
+  title: "Amore Movies: what should we watch?",
   description: "A discovery hub built for two. Mood-based picks, swipe, match, watch together.",
   applicationName: "Amore Movies",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Amore" },
