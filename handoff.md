@@ -20,6 +20,17 @@ plus in-app vibrate + slide-in banner, plus optimistic sender echo).
 Email notifications were consciously skipped: Supabase's mailer only sends auth emails (that's
 the rate-limit error Panda hit); if wanted later, use Resend via an API key in .env.
 
+## 2026-07-09 follow-up: stuck-on-splash was STALE PWA CACHE
+After Panda applied migration 0004 + Netlify env, both phones stuck on the "Warming up" splash
+every open. Root cause: the phones were still running the OLD pre-fix bundle (service worker
+served stale cached HTML+chunks that boot into the infinite-hang code). New deployed code cannot
+hang forever (5s/8s boot timeouts + 5s WelcomeGate escape hatch), so a permanent stuck splash =
+old code on device. Fix = force one clean load (clear PWA website data / reinstall).
+Durable fix shipped (commit c75a27d): RegisterSW now reloads on SW controllerchange + calls
+registration.update() on load/foreground; sw.js bumped to amore-v3 (purges old caches) with a
+3.5s network-first navigation timeout. After phones load the new code ONCE, this class of
+permanent hang is gone for good.
+
 ## Previous phase
 Phase 7 ("After Dark", the 18+ couple's dice game) is SHIPPED on top of Phase 6. All client-side,
 no migration needed. Entry: Profile > "After Dark 18+" card > /after-dark. Build clean, engine
