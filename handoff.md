@@ -39,8 +39,24 @@ reachability). Then open the installed PWA over mobile data instead of WiFi, or 
 go through the same ISP. One successful load installs the amore-v3 worker and the permanent-hang
 class is gone. If splash persists on a confirmed-working network: clear the PWA's website data /
 reinstall (guaranteed clean), then re-enable alerts in Profile.
-Pending verification (blocked by the outage): confirm the deployed sw.js says `amore-v3`
-(per instructions.md §6) once the site is reachable again.
+DONE: deployed sw.js verified as `amore-v3` (fetched via a reachable non-EU Netlify edge with
+curl --resolve; see instructions.md §6). The self-heal fix is confirmed live.
+
+## 2026-07-09 decision + carrier reachability map (Panda's own hotspot / carrier)
+Panda confirmed: works with VPN, works on the PC via his brother's hotspot, Hermi's side fine.
+**Decision: NO Vercel mirror. Stay Netlify-only.** If the carrier route never heals, fallback is
+VPN on Panda's phone; optional future durable fix (approved concept, not built): cheap custom
+domain proxied through Cloudflare (free plan) in front of the same Netlify site.
+Measured from the bad carrier:
+- Netlify Frankfurt edge (35.157.26.135, 63.176.8.218 = what geo-DNS returns here): DEAD.
+- Netlify US edge 18.208.88.157 + Singapore 13.215.239.219: reachable, 200.
+- Supabase (project URL): 200. image.tmdb.org + api.themoviedb.org: reachable.
+- Cloudflare: fast (0.14s). Vercel + GitHub Pages: reachable.
+Practical no-VPN state on Panda's phone once the new bundle lands (one VPN load, visit all 5
+tabs to warm the SW cache, re-enable alerts): app opens from cache, everything Supabase-backed
+works (watchlist, statuses, votes, chat, presence, realtime), posters work (direct image.tmdb.org
+via plain img tag, no Netlify optimizer). Needs VPN until route heals: /api/* on Netlify =
+Discover catalog refresh, AI assistant, sending push notifications.
 
 ## 2026-07-09 follow-up: stuck-on-splash was STALE PWA CACHE
 After Panda applied migration 0004 + Netlify env, both phones stuck on the "Warming up" splash

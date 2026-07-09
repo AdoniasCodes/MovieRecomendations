@@ -193,6 +193,13 @@ was 200 worldwide):
 If it is an ISP path issue: nothing to fix in code; use mobile data or a VPN on the device to
 load the app once (lands the self-healing SW), and retry verification later.
 
+**Verifying the deploy anyway while the local geo edge is down:** Netlify geo-DNS hands this
+region Frankfurt IPs; other edges may still be reachable. Pin curl to a working edge:
+`curl --resolve amoremovies.netlify.app:443:18.208.88.157 https://amoremovies.netlify.app/sw.js`
+(18.208.88.157 = US edge, 13.215.239.219 = Singapore; get fresh ones from a check-host.net run,
+its results show which IP each node connected to). TLS + Host still validate the real site, so
+the response is authoritative.
+
 ## §7. After Dark engine: adding cards safely
 Cards live in `lib/afterdark/deck.ts`. Every card that needs skin declares
 `require.maxClothing` (3 dressed .. 0 nude), every card that strips declares an effect, and
