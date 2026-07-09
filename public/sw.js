@@ -1,6 +1,7 @@
 // Amore Movies service worker — offline app shell.
 // Registered only in production (see RegisterSW.tsx) to avoid dev caching pain.
-const CACHE = "amore-v2";
+const CACHE = "amore-v3";
+const NAV_TIMEOUT = 3500; // fall back to cache if the network stalls this long
 const SHELL = ["/", "/discover", "/watchlist", "/us", "/profile", "/offline", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -60,16 +61,23 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.pathname.startsWith("/api/")) return;
 
-  // navigations: network-first, fall back to cache then offline page
+  // navigations: network-first with a timeout, fall back to cache then offline.
+  // The timeout stops a stalled mobile network from hanging the whole load.
   if (req.mode === "navigate") {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
+      Promise.race([
+        fetch(req).then((res) => {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy));
           return res;
-        })
-        .catch(() => caches.match(req).then((r) => r || caches.match("/offline") || caches.match("/")))
+        }),
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve(caches.match(req).then((r) => r || caches.match("/offline") || caches.match("/"))),
+            NAV_TIMEOUT
+          )
+        ),
+      ]).catch(() => caches.match(req).then((r) => r || caches.match("/offline") || caches.match("/")))
     );
     return;
   }
