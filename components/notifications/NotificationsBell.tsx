@@ -6,7 +6,7 @@ import { openTitleSheet } from "@/lib/title-sheet";
 import type { Notification } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const ICON: Record<string, string> = {
   started: "▶️", favorited: "👍", watchlisted: "🍿", cinema: "🎬",
@@ -20,11 +20,31 @@ export function NotificationsBell() {
 
   const openPanel = () => {
     setOpen(true);
+    setBanner(null);
     // mark incoming as read once seen
     if (unreadCount > 0) setTimeout(() => store.markNotifsRead(), 600);
   };
 
   const latest = store.notifications[0]?.createdAt ?? 0;
+
+  // In-app alert: when a new incoming notification arrives while the panel is
+  // closed, buzz and surface a banner instead of silently ticking the badge.
+  const [banner, setBanner] = useState<Notification | null>(null);
+  const prevUnread = useRef<number | null>(null);
+  useEffect(() => {
+    const prev = prevUnread.current;
+    prevUnread.current = unreadCount;
+    if (prev === null || unreadCount <= prev || open) return; // skip initial hydrate
+    const newest = store.notifications.find((n) => !n.read && n.toId === store.me.id);
+    if (!newest) return;
+    setBanner(newest);
+    try {
+      navigator.vibrate?.([60, 40, 60]);
+    } catch {}
+    const t = setTimeout(() => setBanner(null), 8000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadCount, open]);
 
   return (
     <>
@@ -42,6 +62,26 @@ export function NotificationsBell() {
           </span>
         )}
       </button>
+
+      {/* slide-in banner for a just-arrived notification */}
+      <AnimatePresence>
+        {banner && !open && (
+          <motion.button
+            key={banner.id}
+            initial={{ y: -80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -80, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 320, damping: 26 }}
+            onClick={openPanel}
+            className="glass-strong fixed inset-x-4 top-3 z-[55] mx-auto flex max-w-sm items-center gap-3 rounded-2xl p-3 text-left shadow-card"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-base">
+              {ICON[banner.type] ?? "💬"}
+            </span>
+            <span className="flex-1 text-sm text-white/90">{banner.text}</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {open && (

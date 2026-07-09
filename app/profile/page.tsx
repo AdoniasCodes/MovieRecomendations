@@ -1,6 +1,7 @@
 "use client";
 
 import { PinLogin } from "@/components/auth/PinLogin";
+import { EnableAlerts } from "@/components/notifications/EnableAlerts";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { useWhoami } from "@/lib/identity";
@@ -47,6 +48,9 @@ export default function ProfilePage() {
 
       {/* install as an app */}
       <InstallButton />
+
+      {/* device alerts (web push) */}
+      <EnableAlerts />
 
       {/* after dark */}
       <Link

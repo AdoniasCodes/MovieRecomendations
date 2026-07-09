@@ -79,6 +79,15 @@ export function WelcomeGate() {
     };
   }, [entered]);
 
+  // Escape hatch: a stalled boot must never pin the splash. After 5s the
+  // button unlocks even if auth is still warming up (PIN flow handles the rest).
+  const [waitedTooLong, setWaitedTooLong] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setWaitedTooLong(true), 5000);
+    return () => clearTimeout(t);
+  }, []);
+  const booting = auth.loading && !waitedTooLong;
+
   if (entered) return null;
 
   const showLogin = phase !== "splash";
@@ -125,10 +134,10 @@ export function WelcomeGate() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35 }}
               onClick={() => setPhase("pick")}
-              disabled={auth.loading}
+              disabled={booting}
               className="w-full max-w-xs rounded-2xl bg-accent-gradient py-4 text-base font-bold text-white shadow-glow transition active:scale-95 disabled:opacity-60"
             >
-              {auth.loading ? "Warming up…" : "Get in 💞"}
+              {booting ? "Warming up…" : "Get in 💞"}
             </motion.button>
           </motion.div>
         ) : (

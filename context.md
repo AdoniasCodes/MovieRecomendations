@@ -253,6 +253,32 @@ Fully client-side and isolated: `lib/afterdark/engine.ts` (pure state machine), 
 - No store.tsx involvement, no Supabase, no localStorage state (a night is ephemeral on purpose).
 - Verified: clean `npm run build`; 2000-game simulation (120k draws) with 0 constraint violations.
 
+## 5f. Phase 8 — "Fix the couple loop" (SHIPPED 2026-07-09)
+
+Three investigated root causes (multi-agent audit), all fixed:
+- **Boot hang**: `lib/auth.tsx` boot was a bare `.then()` with six serial un-timed Supabase
+  calls; any stall pinned `loading=true` forever ("Warming up"). Now: getSession raced against
+  5s, loadAll against 8s, try/catch/finally always clears loading, onAuthStateChange also
+  clears it, and WelcomeGate unlocks the button after 5s regardless.
+- **Status/ratings sync**: `watchlist`, `watched`, `votes`, `notes` were never in the
+  supabase_realtime publication (0001 only added notifications/watch_sessions/reactions/matches),
+  so partner changes fired no event. Fixed in migration 0004. Also the `status` reducer only
+  mapped existing watchlist rows (no-op on unsaved titles); it now inserts like `cinema` does.
+  The "watched-by disables status" theory was disproven: pills were never disabled, just no-oping.
+- **Notifications**: data pipeline was already correct (nudge inserts a notifications row with
+  the partner's uuid; realtime + refetch deliver it). What was missing was ALERTING. Added:
+  web push (sw.js `push`/`notificationclick` handlers, cache bumped amore-v2; `app/api/push`
+  route sends via `web-push` npm using VAPID keys from env, caller JWT + RLS scopes it to the
+  couple; `push_subscriptions` table in 0004; `lib/push.ts` subscribe/refresh helpers;
+  `EnableAlerts` profile card with blocking error modals) and in-app alerts (NotificationsBell
+  vibrates + slide-in banner when unread rises while panel closed). `push.notify` in live.ts
+  fire-and-forgets `/api/push` so ALL notification types knock. Sender gets an optimistic echo.
+- Email channel deliberately not built: Supabase mailer = auth emails only (source of Panda's
+  rate-limit errors). Resend is the path if email is ever really wanted.
+- VAPID keys live in `.env.local` + `.env.netlify.local` (gitignored). Netlify needs them
+  imported + redeploy; migration 0004 needs manual apply. Until both, everything degrades
+  gracefully (503 from /api/push, "unsupported" from enablePush).
+
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.
 - Richer watch-along (synced playback position, video provider deep-links).

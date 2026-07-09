@@ -129,9 +129,17 @@ function reducer(state: State, action: Action): State {
     case "unsave":
       return { ...state, watchlist: state.watchlist.filter((w) => w.titleId !== action.titleId) };
     case "status": {
-      const watchlist = state.watchlist.map((w) =>
-        w.titleId === action.titleId ? { ...w, status: action.status } : w
-      );
+      // insert-or-update (like "cinema"): setting a status on a title that was
+      // never saved must create the row, not silently no-op.
+      const inList = state.watchlist.some((w) => w.titleId === action.titleId);
+      const watchlist = inList
+        ? state.watchlist.map((w) =>
+            w.titleId === action.titleId ? { ...w, status: action.status } : w
+          )
+        : [
+            { titleId: action.titleId, addedBy: ME.id, status: action.status, createdAt: action.at },
+            ...state.watchlist,
+          ];
       const ev: ActivityEvent = {
         id: "ev" + action.at, actorId: ME.id, type: action.status === "finished" ? "finished" : "status",
         titleId: action.titleId, detail: `${action.status} ${getTitle(action.titleId)?.title}`, createdAt: action.at,
@@ -623,8 +631,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (text: string, titleId?: string) => {
       const at = clock();
       const ids = liveRef.current;
+      // optimistic local echo so the sender sees it instantly; in live mode
+      // the realtime refetch reconciles with the DB row.
+      dispatch({ type: "nudge", notif: mkNotif(at, "nudge", text, titleId) });
       if (ids && sb) push.notify(sb, ids, "nudge", text, titleId);
-      else dispatch({ type: "nudge", notif: mkNotif(at, "nudge", text, titleId) });
     },
     [clock, sb]
   );

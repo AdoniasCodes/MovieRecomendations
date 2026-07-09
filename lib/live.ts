@@ -99,6 +99,23 @@ export async function loadCoupleState(
   return { watchlist, votes, matches, watched, ratings, notes, notifications, session, aiMessages };
 }
 
+// Fire-and-forget web push to the partner's registered devices. Failure is
+// fine: the notifications row is the source of truth, push is just the knock.
+async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string) {
+  try {
+    const { data } = await sb.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+    await fetch("/api/push", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ toUserId, title: "Amore Movies 💞", body, url: "/" }),
+    });
+  } catch {
+    /* best effort */
+  }
+}
+
 // ---- write mirrors (semantic -> uuid) ------------------------------------
 
 const uid = (ids: Ids, w: Watcher) => (w === "me" ? ids.my : ids.her);
@@ -132,10 +149,13 @@ export const push = {
     sb.from("notes").insert({ couple_id: ids.couple, title_id: titleId, author_id: ids.my, body }),
   deleteNote: (sb: SupabaseClient, ids: Ids, noteId: string) =>
     sb.from("notes").delete().eq("id", noteId),
-  notify: (sb: SupabaseClient, ids: Ids, type: string, body: string, titleId?: string) =>
-    sb.from("notifications").insert({
+  notify: (sb: SupabaseClient, ids: Ids, type: string, body: string, titleId?: string) => {
+    // best-effort web push so the partner is alerted even with the app closed
+    void sendWebPush(sb, ids.her, body);
+    return sb.from("notifications").insert({
       couple_id: ids.couple, type, actor_id: ids.my, to_id: ids.her, title_id: titleId ?? null, body, read: false,
-    }),
+    });
+  },
   readNotifs: (sb: SupabaseClient, ids: Ids) =>
     sb.from("notifications").update({ read: true }).eq("couple_id", ids.couple).eq("to_id", ids.my),
   startSession: async (sb: SupabaseClient, ids: Ids, titleId: string): Promise<string | null> => {

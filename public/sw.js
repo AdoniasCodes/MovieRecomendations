@@ -1,6 +1,6 @@
 // Amore Movies service worker — offline app shell.
 // Registered only in production (see RegisterSW.tsx) to avoid dev caching pain.
-const CACHE = "amore-v1";
+const CACHE = "amore-v2";
 const SHELL = ["/", "/discover", "/watchlist", "/us", "/profile", "/offline", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -13,6 +13,43 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
   );
   self.clients.claim();
+});
+
+// Web push: show a notification even when the app is closed.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  const title = data.title || "Amore Movies";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "Something happened over at Amore Movies",
+      icon: "/icon-512.png",
+      badge: "/icon.svg",
+      tag: data.tag || "amore-generic",
+      data: { url: data.url || "/" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const win of wins) {
+        if ("focus" in win) {
+          win.focus();
+          if ("navigate" in win) win.navigate(url);
+          return;
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });
 
 self.addEventListener("fetch", (event) => {

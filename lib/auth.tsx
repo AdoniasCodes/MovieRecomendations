@@ -91,15 +91,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let active = true;
-    sb.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      setSession(data.session);
-      await loadAll(data.session);
-      setLoading(false);
-    });
+    // Boot must NEVER pin the splash: every step is timed out and the loading
+    // flag clears in finally even if the network stalls or a call rejects.
+    const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
+      Promise.race([p, new Promise<T>((res) => setTimeout(() => res(fallback), ms))]);
+    (async () => {
+      try {
+        const { data } = await withTimeout(
+          sb.auth.getSession(),
+          5000,
+          { data: { session: null } } as Awaited<ReturnType<typeof sb.auth.getSession>>
+        );
+        if (!active) return;
+        setSession(data.session);
+        await withTimeout(loadAll(data.session), 8000, undefined);
+      } catch (e) {
+        console.error("auth boot failed", e);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
     const { data: sub } = sb.auth.onAuthStateChange(async (_e, s) => {
       setSession(s);
-      await loadAll(s);
+      try {
+        await loadAll(s);
+      } catch (e) {
+        console.error("auth reload failed", e);
+      } finally {
+        // late-arriving session (e.g. after a getSession timeout) also unlocks
+        setLoading(false);
+      }
     });
     return () => {
       active = false;

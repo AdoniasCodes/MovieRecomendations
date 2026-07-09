@@ -2,7 +2,25 @@
 
 _Updated: 2026-07-06_
 
-## Current phase
+## Current phase (2026-07-09): Phase 8 "Fix the couple loop" SHIPPED, 2 manual steps pending
+Root-caused and fixed: (1) boot hang on "Warming up" (auth.tsx had no timeout/catch/finally on
+getSession + 6 serial queries; now timed out 5s/8s with finally, plus a 5s WelcomeGate escape
+hatch); (2) watch status pills silently no-oping (status reducer lacked the insert branch cinema
+had); (3) partner statuses/ratings/votes/notes never syncing (those 4 tables were missing from
+the supabase_realtime publication; cinema only worked by piggybacking a notifications insert);
+(4) nudges giving no alert (pipeline was fine, alerting layer didn't exist: added web push via
+sw.js push handlers + /api/push route + push_subscriptions table + EnableAlerts profile card,
+plus in-app vibrate + slide-in banner, plus optimistic sender echo).
+
+**PANDA MUST DO (push + sync fixes are dormant until then):**
+1. Apply `supabase/migrations/0004_realtime_push.sql` in the Supabase SQL editor.
+2. In Netlify: add the 3 new env vars from `.env.netlify.local` (NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+   VAPID_PRIVATE_KEY, VAPID_SUBJECT) and trigger a redeploy. Then on BOTH phones: open the
+   installed PWA > Profile > "Turn on alerts".
+Email notifications were consciously skipped: Supabase's mailer only sends auth emails (that's
+the rate-limit error Panda hit); if wanted later, use Resend via an API key in .env.
+
+## Previous phase
 Phase 7 ("After Dark", the 18+ couple's dice game) is SHIPPED on top of Phase 6. All client-side,
 no migration needed. Entry: Profile > "After Dark 18+" card > /after-dark. Build clean, engine
 stress-tested (120k simulated draws, 0 coherence violations).
