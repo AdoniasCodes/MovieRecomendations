@@ -180,6 +180,19 @@ and no Netlify CLI auth exists locally. After pushing to main, wait 2-4 min then
 `curl -s -o /dev/null -w "%{http_code}" https://amoremovies.netlify.app/<route>` (expect 200)
 and grep the HTML for content unique to the new change.
 
+**If local curl times out (000), do NOT assume the deploy failed.** Rule out a local/ISP path
+problem first (hit us 2026-07-09: ISP could not reach Netlify's Frankfurt edge while the site
+was 200 worldwide):
+1. `curl https://www.google.com` and `https://www.netlify.com` — if those work, general
+   internet is fine.
+2. `dig +short amoremovies.netlify.app` locally and `@8.8.8.8` — identical answers = DNS fine.
+3. Global vantage: `curl -H "Accept: application/json" "https://check-host.net/check-http?host=https%3A%2F%2Famoremovies.netlify.app%2F&max_nodes=5"`,
+   grab `request_id`, sleep ~12s, then `curl .../check-result/<id>`. 200s from other countries =
+   site is up, the path from this ISP is broken.
+4. Netlify health: `curl https://www.netlifystatus.com/api/v2/status.json`.
+If it is an ISP path issue: nothing to fix in code; use mobile data or a VPN on the device to
+load the app once (lands the self-healing SW), and retry verification later.
+
 ## §7. After Dark engine: adding cards safely
 Cards live in `lib/afterdark/deck.ts`. Every card that needs skin declares
 `require.maxClothing` (3 dressed .. 0 nude), every card that strips declares an effect, and

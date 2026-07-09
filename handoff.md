@@ -20,6 +20,28 @@ plus in-app vibrate + slide-in banner, plus optimistic sender echo).
 Email notifications were consciously skipped: Supabase's mailer only sends auth emails (that's
 the rate-limit error Panda hit); if wanted later, use Resend via an API key in .env.
 
+## 2026-07-09 late-night follow-up: splash STILL stuck, root cause is the NETWORK, not code
+Investigated at ~11pm. The site and the self-heal fix are fine; Panda's ISP cannot currently
+reach Netlify's edge:
+- From this machine, https://amoremovies.netlify.app times out at TCP connect (curl 000, no
+  remote IP). DNS is correct and identical on local/8.8.8.8/1.1.1.1 (35.157.26.135, 63.176.8.218
+  = Netlify edge on AWS Frankfurt). Traceroute dies inside the ISP's 10.x network.
+- check-host.net: 200 OK from Finland, Hungary, Indonesia, India, Japan, including from the SAME
+  two IPs that time out here. Netlify status page: all systems operational, no incidents.
+- origin/main has the fix commits (55924f6). GitHub and general internet reachable; only the
+  Netlify edge path is broken from this ISP.
+Why the phones hang: they still run the OLD cached bundle (pre-timeout code that can hang
+forever), and they cannot download the fixed bundle because the site is unreachable from this
+network. Nothing to change in code; the shipped SW self-heal lands the moment a phone loads the
+site once over a working path.
+**What Panda must do:** on the phone, try the site in a normal browser tab first (confirms
+reachability). Then open the installed PWA over mobile data instead of WiFi, or via VPN if both
+go through the same ISP. One successful load installs the amore-v3 worker and the permanent-hang
+class is gone. If splash persists on a confirmed-working network: clear the PWA's website data /
+reinstall (guaranteed clean), then re-enable alerts in Profile.
+Pending verification (blocked by the outage): confirm the deployed sw.js says `amore-v3`
+(per instructions.md §6) once the site is reachable again.
+
 ## 2026-07-09 follow-up: stuck-on-splash was STALE PWA CACHE
 After Panda applied migration 0004 + Netlify env, both phones stuck on the "Warming up" splash
 every open. Root cause: the phones were still running the OLD pre-fix bundle (service worker
