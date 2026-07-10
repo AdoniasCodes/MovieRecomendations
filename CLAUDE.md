@@ -5,7 +5,7 @@ Fun project (call the user **Panda**). Couples' movie/series discovery platform 
 ## Decisions locked
 - **Name:** Amore Movies. **Users:** Panda + Hermi, PIN login (two pre-paired Supabase accounts, see `lib/pin-accounts.ts`).
 - **Identity UX:** the who-are-you picker shows on EVERY app open; PIN only when there is no session for the picked identity. No anonymous mode. 1 hour of inactivity re-shows the picker (no PIN) and drops you to offline for your partner.
-- **Watch-along:** a partner-started session shows a small invite card, never a full-screen takeover. Dismissing it is permanent per device.
+- **Watch-along:** a partner-started session shows a small invite card, never a full-screen takeover. An ACTIVE session is never lost by leaving the app: re-entry re-offers it, "Later"/minimize collapse to a resume chip (per-mount state in `lib/party-ui.ts`), and its notification rejoins it. Sessions end only via the Wrap up modal (completed/dropped) and stay saved (with their conversation) in Us > Watchalongs until deleted.
 
 ## Architecture (where things live)
 - `lib/identity.ts` — DISPLAY identity ("panda" | "hermi", persisted). Decides whose name/emoji renders as "me" vs "partner". Semantic ids stay `"me"`/`"her"` everywhere; `ME`/`PARTNER` in mock-data are id anchors only.
