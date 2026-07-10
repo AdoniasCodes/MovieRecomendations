@@ -43,7 +43,7 @@ export function AssistantButton() {
       <button
         onClick={() => setOpen(true)}
         className={`fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent-gradient shadow-glow-magenta transition active:scale-90 ${
-          pendingMatch ? "opacity-0" : "opacity-100"
+          pendingMatch ? "pointer-events-none opacity-0" : "opacity-100"
         }`}
         aria-label="AI assistant"
       >

@@ -516,12 +516,13 @@ export const TITLE_BY_ID = new Map(TITLES.map((x) => [x.id, x]));
 // three tiers so infinite scrolling never bloats storage:
 //   1. STATIC  — the curated TITLES (richest data; seeds the rec engine)
 //   2. pinned  — titles the user actually interacted with (saved/voted/watched/
-//                noted/matched). Persisted unbounded — but this set stays small.
+//                noted/matched). Persisted, LRU-capped at PINNED_CAP.
 //   3. recent  — a capped LRU of everything just browsed. In-memory + a capped
 //                slice persisted for a nice reload, evicted past RECENT_CAP.
 const RECENT_KEY = "amore-movies/catalog";
 const PINNED_KEY = "amore-movies/catalog-pinned";
 const RECENT_CAP = 500; // ~500 browsed titles ≈ well under the localStorage budget
+const PINNED_CAP = 600; // acted-on titles; LRU-evicted so storage can never grow forever
 
 const recent = new Map<string, Title>(); // insertion-ordered → cheap LRU
 const pinned = new Map<string, Title>();
@@ -573,6 +574,10 @@ export function pinTitles(ids: Iterable<string>) {
       pinned.set(id, t);
       changed = true;
     }
+  }
+  while (pinned.size > PINNED_CAP) {
+    pinned.delete(pinned.keys().next().value as string);
+    changed = true;
   }
   if (changed) persist(PINNED_KEY, pinned);
 }

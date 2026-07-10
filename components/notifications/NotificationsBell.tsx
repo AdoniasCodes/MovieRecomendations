@@ -41,17 +41,23 @@ export function NotificationsBell() {
     try {
       navigator.vibrate?.([60, 40, 60]);
     } catch {}
-    const t = setTimeout(() => setBanner(null), 8000);
-    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unreadCount, open]);
+
+  // The dismiss timer lives on the banner itself: whatever else re-renders or
+  // changes unread counts, a shown banner ALWAYS leaves after 8s.
+  useEffect(() => {
+    if (!banner) return;
+    const t = setTimeout(() => setBanner(null), 8000);
+    return () => clearTimeout(t);
+  }, [banner]);
 
   return (
     <>
       <button
         onClick={openPanel}
         className={`fixed bottom-[10.5rem] right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full glass-strong shadow-card transition active:scale-90 ${
-          pendingMatch ? "opacity-0" : "opacity-100"
+          pendingMatch ? "pointer-events-none opacity-0" : "opacity-100"
         }`}
         aria-label="Notifications"
       >
@@ -73,7 +79,7 @@ export function NotificationsBell() {
             exit={{ y: -80, opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 26 }}
             onClick={openPanel}
-            className="glass-strong fixed inset-x-4 top-3 z-[55] mx-auto flex max-w-sm items-center gap-3 rounded-2xl p-3 text-left shadow-card"
+            className="glass-strong fixed inset-x-4 top-3 z-[45] mx-auto flex max-w-sm items-center gap-3 rounded-2xl p-3 text-left shadow-card"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-base">
               {ICON[banner.type] ?? "💬"}

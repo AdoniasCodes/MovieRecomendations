@@ -1,7 +1,7 @@
 // Amore Movies service worker — offline app shell.
 // Registered only in production (see RegisterSW.tsx) to avoid dev caching pain.
-const CACHE = "amore-v3";
-const NAV_TIMEOUT = 3500; // fall back to cache if the network stalls this long
+const CACHE = "amore-v4";
+const NAV_TIMEOUT = 3500; // no-cache fallback ceiling for a first-ever visit
 const SHELL = ["/", "/discover", "/watchlist", "/us", "/profile", "/offline", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -28,7 +28,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "Something happened over at Amore Movies",
-      icon: "/icon-512.png",
+      icon: "/icon-192.png",
       badge: "/icon.svg",
       tag: data.tag || "amore-generic",
       data: { url: data.url || "/" },
@@ -61,23 +61,31 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.pathname.startsWith("/api/")) return;
 
-  // navigations: network-first with a timeout, fall back to cache then offline.
-  // The timeout stops a stalled mobile network from hanging the whole load.
+  // navigations: cached shell instantly, refresh the cache in the background
+  // (stale-while-revalidate). The app is a shell + client data fetches, so a
+  // cached page is always safe to serve; waiting on a flaky network for HTML
+  // just made every open feel seconds slower. First-ever visits (no cache yet)
+  // still go network-first with a timeout.
   if (req.mode === "navigate") {
+    const refresh = fetch(req)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+        return res;
+      });
     event.respondWith(
-      Promise.race([
-        fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        }),
-        new Promise((resolve) =>
-          setTimeout(
-            () => resolve(caches.match(req).then((r) => r || caches.match("/offline") || caches.match("/"))),
-            NAV_TIMEOUT
-          )
-        ),
-      ]).catch(() => caches.match(req).then((r) => r || caches.match("/offline") || caches.match("/")))
+      caches.match(req).then((cached) => {
+        if (cached) {
+          refresh.catch(() => {}); // background revalidate; failure is fine
+          return cached;
+        }
+        const shellFallback = () =>
+          caches.match("/offline").then((off) => off || caches.match("/"));
+        return Promise.race([
+          refresh,
+          new Promise((resolve) => setTimeout(() => resolve(shellFallback()), NAV_TIMEOUT)),
+        ]).catch(shellFallback);
+      })
     );
     return;
   }

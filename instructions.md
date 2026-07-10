@@ -174,6 +174,29 @@ near-black; wholesome = warmer/brighter). Keep `voteAverage`/`popularity` realis
   (b) staleness filtering at hydrate time, (c) a local dismissed-set for the race window, and
   (d) "accepted this mount" gating so rehydration renders an invite, not a takeover.
 
+## §8a. Supabase golden rule: builders are LAZY
+`sb.from(...).insert/update/upsert/delete(...)` does NOTHING until the builder is awaited
+or `.then()` is called on it. A fire-and-forget call silently discards the query. Every
+mirror in `lib/live.ts` must return `run(builder)` (the wrapper that forces execution and
+swallows network errors). When adding any new store action that mirrors to Supabase,
+wrap the builder in `run()` or await it. This bug shipped invisible for weeks because the
+optimistic local dispatch made everything LOOK like it worked on the acting device.
+
+## §8b. Two-user E2E verification (the only test that catches couple-loop bugs)
+Node + playwright-core against a LOCAL PRODUCTION build (`npm run build` then `npm start`;
+prod activates the service worker; never build while dev runs). Chromium binary from the
+playwright cache (`~/Library/Caches/ms-playwright/chromium-*/...`). Pattern (see Phase 9):
+- Two browser contexts, sign in both accounts via the gate (Get in, name, PIN 9009).
+- Navigate ONLY client-side (bottom nav); any page.goto re-summons the WelcomeGate by
+  design, and the gate WILL intercept clicks (probe must re-enter it after a hard nav).
+- Assert with request listeners (did the POST /rest/v1/<table> actually fire?), websocket
+  frames for realtime, elementFromPoint hit-tests for overlay/z-index blocking, and
+  MutationObserver counts for idle churn.
+- Realtime self-echo: own writes must cause 0 refetch GETs; a partner write must cause
+  one refetch burst on the other context.
+- Leave the couple's data as found (toggle back what you toggled; nudges are acceptable
+  residue but tell Panda).
+
 ## §6. Verifying a Netlify deploy (no dashboard access needed)
 GitHub commit statuses/check-runs stay empty for this repo (Netlify not wired as a GitHub check)
 and no Netlify CLI auth exists locally. After pushing to main, wait 2-4 min then:

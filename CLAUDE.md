@@ -23,5 +23,10 @@ Fun project (call the user **Panda**). Couples' movie/series discovery platform 
 ## Don't
 - Don't add real API keys to the repo. Use `.env.local` (gitignored).
 - Don't break the `store.tsx` action seam or move uuid handling out of `live.ts`.
+- NEVER call a supabase-js builder fire-and-forget: builders are lazy and only execute
+  when awaited/then'd. Wrap mirrors in `run()` (see `lib/live.ts` + instructions.md §8a).
+- Overlays: nothing interactive may render above the TitleSheet (z-50) except true
+  takeovers (MatchOverlay/WatchParty z-60, AfterDark 70, EnableAlerts 80, WelcomeGate 100).
+  Anything faded out via opacity-0 needs pointer-events-none.
 - No `Date.now()`/`Math.random()` in first-render paths (hydration). localStorage only in effects.
 - No em dashes in user-visible copy or docs (workspace rule).

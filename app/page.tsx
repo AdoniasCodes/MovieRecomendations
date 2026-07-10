@@ -201,7 +201,7 @@ function TonightHero({ pick, onReshuffle }: { pick: Scored; onReshuffle: () => v
         <div className="absolute inset-x-0 bottom-0 p-4">
           <h2 className="text-3xl font-black leading-tight">{t.title}</h2>
           <p className="mt-0.5 text-sm text-white/55">
-            {t.year} · {t.mediaType === "tv" ? `${t.seasons} seasons` : `${t.runtime} min`} ·{" "}
+            {t.year} · {t.mediaType === "tv" ? (t.seasons ? `${t.seasons} seasons` : "Series") : `${t.runtime} min`} ·{" "}
             {t.genres.slice(0, 2).join(" / ")} · ⭐ {t.voteAverage.toFixed(1)}
           </p>
           <p className="mt-2 flex items-start gap-1.5 text-xs text-white/75">

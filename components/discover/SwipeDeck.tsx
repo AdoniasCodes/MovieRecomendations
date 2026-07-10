@@ -136,7 +136,9 @@ export function SwipeDeck({
                     </div>
                     <p className="mb-1.5 text-xs text-white/55">
                       {card.title.mediaType === "tv"
-                        ? `${card.title.seasons} seasons`
+                        ? card.title.seasons
+                          ? `${card.title.seasons} seasons`
+                          : "Series"
                         : `${card.title.runtime} min`}{" "}
                       · {card.title.genres.join(" / ")} · ⭐ {card.title.voteAverage.toFixed(1)}
                     </p>

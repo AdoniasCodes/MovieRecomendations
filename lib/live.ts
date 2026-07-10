@@ -110,54 +110,98 @@ async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string) {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ toUserId, title: "Amore Movies 💞", body, url: "/" }),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch {
     /* best effort */
   }
 }
 
+// ---- self-echo suppression -------------------------------------------------
+// Realtime echoes our OWN writes back to us. Since every local mutation is
+// already dispatched optimistically, refetching the whole couple slice for a
+// self-echo is pure waste (8 queries + a full re-render per swipe/save — the
+// post-0004 slowdown). High-frequency tables record a local-write stamp here
+// and their echoes are dropped while it is fresh. Low-frequency tables (notes,
+// ai_messages, sessions, reactions) keep the refetch: it is how locally
+// created rows pick up their server-assigned ids.
+const SELF_ECHO_MS = 4_000;
+const recentLocalWrites = new Map<string, number>();
+const markLocalWrite = (table: string) => recentLocalWrites.set(table, Date.now());
+const isSelfEcho = (table: string) => {
+  const at = recentLocalWrites.get(table);
+  return at != null && Date.now() - at < SELF_ECHO_MS;
+};
+
 // ---- write mirrors (semantic -> uuid) ------------------------------------
 
 const uid = (ids: Ids, w: Watcher) => (w === "me" ? ids.my : ids.her);
 
+// CRITICAL: supabase-js builders are LAZY — the request is only sent when the
+// builder is awaited/then'd. Every mirror below is called fire-and-forget from
+// store.tsx, so each must be forced to execute here. run() kicks the builder
+// (Promise.resolve subscribes to the thenable) and swallows network errors
+// (the optimistic local dispatch already happened; the next refetch reconciles).
+function run<T>(builder: PromiseLike<T>): Promise<T | undefined> {
+  return Promise.resolve(builder).catch(() => undefined);
+}
+
 export const push = {
-  save: (sb: SupabaseClient, ids: Ids, titleId: string) =>
-    sb.from("watchlist").upsert(
+  save: (sb: SupabaseClient, ids: Ids, titleId: string) => {
+    markLocalWrite("watchlist");
+    return run(sb.from("watchlist").upsert(
       { couple_id: ids.couple, title_id: titleId, added_by: ids.my, status: "interested" },
       { onConflict: "couple_id,title_id", ignoreDuplicates: true }
-    ),
-  unsave: (sb: SupabaseClient, ids: Ids, titleId: string) =>
-    sb.from("watchlist").delete().eq("couple_id", ids.couple).eq("title_id", titleId),
-  status: (sb: SupabaseClient, ids: Ids, titleId: string, status: string) =>
-    sb.from("watchlist").upsert(
+    ));
+  },
+  unsave: (sb: SupabaseClient, ids: Ids, titleId: string) => {
+    markLocalWrite("watchlist");
+    return run(sb.from("watchlist").delete().eq("couple_id", ids.couple).eq("title_id", titleId));
+  },
+  status: (sb: SupabaseClient, ids: Ids, titleId: string, status: string) => {
+    markLocalWrite("watchlist");
+    return run(sb.from("watchlist").upsert(
       { couple_id: ids.couple, title_id: titleId, added_by: ids.my, status },
       { onConflict: "couple_id,title_id" }
-    ),
-  cinema: (sb: SupabaseClient, ids: Ids, titleId: string, cinema: boolean) =>
-    sb.from("watchlist").upsert(
+    ));
+  },
+  cinema: (sb: SupabaseClient, ids: Ids, titleId: string, cinema: boolean) => {
+    markLocalWrite("watchlist");
+    return run(sb.from("watchlist").upsert(
       { couple_id: ids.couple, title_id: titleId, added_by: ids.my, status: "interested", cinema },
       { onConflict: "couple_id,title_id" }
-    ).then(() => sb.from("watchlist").update({ cinema }).eq("couple_id", ids.couple).eq("title_id", titleId)),
-  watched: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher, rating?: number) =>
-    sb.from("watched").upsert(
+    ).then(() => {
+      markLocalWrite("watchlist");
+      return sb.from("watchlist").update({ cinema }).eq("couple_id", ids.couple).eq("title_id", titleId);
+    }));
+  },
+  watched: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher, rating?: number) => {
+    markLocalWrite("watched");
+    return run(sb.from("watched").upsert(
       { couple_id: ids.couple, title_id: titleId, watcher: uid(ids, w), ...(rating != null ? { rating } : {}) },
       { onConflict: "couple_id,title_id,watcher" }
-    ),
-  unwatch: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher) =>
-    sb.from("watched").delete().eq("couple_id", ids.couple).eq("title_id", titleId).eq("watcher", uid(ids, w)),
+    ));
+  },
+  unwatch: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher) => {
+    markLocalWrite("watched");
+    return run(sb.from("watched").delete().eq("couple_id", ids.couple).eq("title_id", titleId).eq("watcher", uid(ids, w)));
+  },
   note: (sb: SupabaseClient, ids: Ids, titleId: string, body: string) =>
-    sb.from("notes").insert({ couple_id: ids.couple, title_id: titleId, author_id: ids.my, body }),
+    run(sb.from("notes").insert({ couple_id: ids.couple, title_id: titleId, author_id: ids.my, body })),
   deleteNote: (sb: SupabaseClient, ids: Ids, noteId: string) =>
-    sb.from("notes").delete().eq("id", noteId),
+    run(sb.from("notes").delete().eq("id", noteId)),
   notify: (sb: SupabaseClient, ids: Ids, type: string, body: string, titleId?: string) => {
     // best-effort web push so the partner is alerted even with the app closed
     void sendWebPush(sb, ids.her, body);
-    return sb.from("notifications").insert({
+    markLocalWrite("notifications");
+    return run(sb.from("notifications").insert({
       couple_id: ids.couple, type, actor_id: ids.my, to_id: ids.her, title_id: titleId ?? null, body, read: false,
-    });
+    }));
   },
-  readNotifs: (sb: SupabaseClient, ids: Ids) =>
-    sb.from("notifications").update({ read: true }).eq("couple_id", ids.couple).eq("to_id", ids.my),
+  readNotifs: (sb: SupabaseClient, ids: Ids) => {
+    markLocalWrite("notifications");
+    return run(sb.from("notifications").update({ read: true }).eq("couple_id", ids.couple).eq("to_id", ids.my));
+  },
   startSession: async (sb: SupabaseClient, ids: Ids, titleId: string): Promise<string | null> => {
     // never leave two active rows: retire any existing active session first.
     await sb
@@ -175,12 +219,12 @@ export const push = {
   // close ALL active rows for the couple (a duplicate/raced row can never linger
   // and auto-open the overlay on next load).
   endSession: (sb: SupabaseClient, ids: Ids) =>
-    sb.from("watch_sessions")
+    run(sb.from("watch_sessions")
       .update({ active: false, ended_at: new Date().toISOString() })
       .eq("couple_id", ids.couple)
-      .eq("active", true),
+      .eq("active", true)),
   react: (sb: SupabaseClient, ids: Ids, sessionId: string, kind: string, content: string) =>
-    sb.from("reactions").insert({ session_id: sessionId, couple_id: ids.couple, by_user: ids.my, kind, content }),
+    run(sb.from("reactions").insert({ session_id: sessionId, couple_id: ids.couple, by_user: ids.my, kind, content })),
   aiMessage: (
     sb: SupabaseClient,
     ids: Ids,
@@ -191,10 +235,10 @@ export const push = {
       source?: string;
     }
   ) =>
-    sb.from("ai_messages").insert({
+    run(sb.from("ai_messages").insert({
       couple_id: ids.couple, author_id: ids.my, role: msg.role, body: msg.body,
       picks: msg.picks ?? null, source: msg.source ?? null,
-    }),
+    })),
 };
 
 /** after my "like" vote, form a match if my partner already liked it. returns titleId if matched. */
@@ -204,6 +248,7 @@ export async function pushVoteAndMaybeMatch(
   titleId: string,
   value: string
 ): Promise<string | null> {
+  markLocalWrite("votes");
   await sb.from("votes").upsert(
     { couple_id: ids.couple, title_id: titleId, user_id: ids.my, value },
     { onConflict: "couple_id,title_id,user_id" }
@@ -230,7 +275,10 @@ export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: (
   // every couple-scoped table (reactions now carries couple_id too) is filtered
   // to this couple, so another couple's activity never triggers a refetch storm.
   for (const table of COUPLE_TABLES) {
-    ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, onChange);
+    ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, () => {
+      if (isSelfEcho(table)) return;
+      onChange();
+    });
   }
   ch.subscribe();
   return () => {

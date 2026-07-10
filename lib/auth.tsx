@@ -95,6 +95,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // flag clears in finally even if the network stalls or a call rejects.
     const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
       Promise.race([p, new Promise<T>((res) => setTimeout(() => res(fallback), ms))]);
+    // loadAll dedup: the boot IIFE and onAuthStateChange (INITIAL_SESSION,
+    // TOKEN_REFRESHED) would otherwise each run the same ~6-query load for the
+    // same user. Track whose data is loaded and only reload on a real change.
+    let loadedFor: string | null | undefined = undefined;
     (async () => {
       try {
         const { data } = await withTimeout(
@@ -104,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         if (!active) return;
         setSession(data.session);
+        loadedFor = data.session?.user.id ?? null;
         await withTimeout(loadAll(data.session), 8000, undefined);
       } catch (e) {
         console.error("auth boot failed", e);
@@ -113,6 +118,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
     const { data: sub } = sb.auth.onAuthStateChange(async (_e, s) => {
       setSession(s);
+      const key = s?.user.id ?? null;
+      if (key === loadedFor) {
+        setLoading(false); // same user's data already loaded (or loading)
+        return;
+      }
+      loadedFor = key;
       try {
         await loadAll(s);
       } catch (e) {

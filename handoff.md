@@ -1,8 +1,43 @@
 # handoff.md — Amore Movies
 
-_Updated: 2026-07-06_
+_Updated: 2026-07-10_
 
-## Current phase (2026-07-09): Phase 8 "Fix the couple loop" SHIPPED, 2 manual steps pending
+## Current phase (2026-07-10): Phase 9 "Diagnose + cleanse" SHIPPED
+Panda reported: drawer taps dead, app way slower, Hermi offline, nudges not arriving.
+Full diagnostic (3 parallel audits + real two-user Playwright E2E on a local prod build)
+found and fixed, all verified end-to-end before push:
+1. **THE BIG ONE: most Supabase mirror writes never executed.** supabase-js builders are
+   lazy (request fires only when awaited). Nearly every `push.*` call in store.tsx is
+   fire-and-forget, so nudge/save/status/note/AI-message/endSession INSERTs were silently
+   discarded. Only the awaited paths (votes/matches/startSession) ever wrote. Fixed with a
+   `run()` wrapper in live.ts that forces execution + swallows network errors. This is why
+   Hermi's nudges never arrived (only the /api/push knock fired, no notifications row).
+2. **Dead drawer taps: stuck notification banner.** The Phase 8 in-app banner (z-55) sat
+   ABOVE the TitleSheet (z-50) and its 8s dismiss timer was cancelled without reschedule
+   whenever unread changed, leaving an invisible tap-eater parked over the drawer header.
+   Now: timer tied to the banner itself, banner z-45 (below sheet), FABs get
+   pointer-events-none while faded.
+3. **Slowness: self-echo refetch storm.** After migration 0004 published watchlist/watched/
+   votes/notes, every own swipe/save echoed back and triggered the full 8-query refetch +
+   app-wide re-render. Now suppressed (4s table-level local-write window in live.ts);
+   partner events still refetch (verified). Reconcile-on-foreground added in store.tsx.
+4. Boot: loadAll ran twice (boot IIFE + INITIAL_SESSION) = ~12 serial queries; deduped by
+   user id. SW navigations now cache-first with background revalidate (amore-v4) instead of
+   3.5s network-first waits on the broken ISP path. Error boundaries added (app/error.tsx +
+   global-error.tsx, blocking OK modal). Fetch timeouts on catalog/assistant/similar/push.
+   "undefined seasons" fixed (falls back to "Series"). Icons/photo compressed (~560K saved,
+   icon-512 490K to 146K). Orphan icon-maskable.svg deleted. AfterDark roll timer cleanup.
+   catalog-pinned localStorage now LRU-capped (600).
+- Presence verified working both ways in E2E (both saw each other online). "Hermi offline"
+  on real phones = honest-presence semantics (online only while her app is foregrounded,
+  2.5 min freshness) + her actions never syncing due to bug 1 making the app look dead.
+- E2E leftovers in the couple's real data: a test vote each on Shoplifters (Panda: Pass,
+  Hermi: Like) and one test nudge notification; Panda's old unread were marked read.
+  Re-swipe Shoplifters if you care about it.
+- Verify scripts live in the session scratchpad (probe8.mjs pattern documented in
+  instructions.md §8b).
+
+## Previous phase (2026-07-09): Phase 8 "Fix the couple loop" SHIPPED, 2 manual steps pending
 Root-caused and fixed: (1) boot hang on "Warming up" (auth.tsx had no timeout/catch/finally on
 getSession + 6 serial queries; now timed out 5s/8s with finally, plus a 5s WelcomeGate escape
 hatch); (2) watch status pills silently no-oping (status reducer lacked the insert branch cinema

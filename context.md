@@ -279,6 +279,28 @@ Three investigated root causes (multi-agent audit), all fixed:
   imported + redeploy; migration 0004 needs manual apply. Until both, everything degrades
   gracefully (503 from /api/push, "unsupported" from enablePush).
 
+## 5g. Phase 9 — "Diagnose + cleanse" (SHIPPED 2026-07-10)
+
+Panda reported dead drawer taps, big slowdown, missing nudges, partner always offline.
+Root causes found by parallel audits + a real two-user Playwright E2E against a local
+production build (both accounts signed in, real Supabase):
+- **Lazy supabase-js builders**: every fire-and-forget `push.*` mirror (nudge, save,
+  status, note, AI message, endSession, readNotifs...) built a query but never sent it,
+  because PostgrestBuilder only executes when awaited/then'd. `run()` wrapper in live.ts
+  now forces execution. THE golden rule is in instructions.md §8a.
+- **Stuck banner over the drawer**: Phase 8's in-app banner rendered at z-55 above the
+  TitleSheet (z-50) and could lose its dismiss timer (cleanup-without-reschedule when
+  unread changed). Timer now keyed to the banner state; banner moved to z-45.
+- **Self-echo refetch storm**: 0004's realtime publication meant own writes echoed back,
+  each one a debounced 8-query refetch + full re-render. Table-level 4s suppression added;
+  foreign (partner) events still refetch; visibilitychange reconcile covers missed events.
+- Also: loadAll boot dedup, SW cache-first navigations (amore-v4), error boundaries,
+  fetch timeouts, "undefined seasons" fallback, image compression, pinned-registry cap,
+  AfterDark timer cleanup.
+E2E verified: presence both ways, nudge lands as DB row + banner in under 2s, banner
+auto-dismisses at 8s, drawer fully clickable underneath, 0 self-refetches, partner
+actions refetch, SPA navs 33-190ms, SW cached reload 122ms.
+
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.
 - Richer watch-along (synced playback position, video provider deep-links).

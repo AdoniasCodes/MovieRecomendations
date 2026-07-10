@@ -78,6 +78,7 @@ function Body({ titleId }: { titleId: string }) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ titleId: t.id, audience }),
+        signal: AbortSignal.timeout(30_000),
       });
       setSim(await res.json());
     } catch {
@@ -108,7 +109,7 @@ function Body({ titleId }: { titleId: string }) {
         <div className="absolute -bottom-1 left-4 right-4">
           <h2 className="text-2xl font-black leading-tight drop-shadow">{t.title}</h2>
           <p className="text-sm text-white/60">
-            {t.year} · {t.mediaType === "tv" ? `${t.seasons} seasons` : `${t.runtime} min`} · {t.genres.join(" / ")}
+            {t.year} · {t.mediaType === "tv" ? (t.seasons ? `${t.seasons} seasons` : "Series") : `${t.runtime} min`} · {t.genres.join(" / ")}
           </p>
         </div>
       </div>

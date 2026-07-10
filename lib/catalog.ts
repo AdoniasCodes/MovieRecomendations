@@ -8,7 +8,7 @@ import type { MediaFilter, Title } from "./types";
 async function fetchCatalog(params: Record<string, string>): Promise<Title[]> {
   const qs = new URLSearchParams(params).toString();
   try {
-    const res = await fetch(`/api/catalog?${qs}`);
+    const res = await fetch(`/api/catalog?${qs}`, { signal: AbortSignal.timeout(15_000) });
     const data = (await res.json()) as { results?: Title[] };
     const results = data.results ?? [];
     registerTitles(results);

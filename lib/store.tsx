@@ -415,8 +415,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     let herOnline = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const reload = async () => {
-      const slice = await loadCoupleState(sb, ids, herOnline);
-      if (!cancelled) dispatch({ type: "hydrate", state: { ...emptyState, ...slice, herOnline } });
+      try {
+        const slice = await loadCoupleState(sb, ids, herOnline);
+        if (!cancelled) dispatch({ type: "hydrate", state: { ...emptyState, ...slice, herOnline } });
+      } catch {
+        /* transient network failure: realtime/visibility will trigger the next reload */
+      }
     };
     reload();
     const unsub = subscribeCoupleChanges(sb, ids, () => {
@@ -427,9 +431,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       herOnline = online;
       dispatch({ type: "presence", herOnline: online });
     });
+    // reconcile on foreground: self-echo suppression can skip a partner event
+    // that lands inside our own write window, so refresh whenever the app
+    // comes back into view.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reload();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       unsub();
       unpres();
     };
@@ -600,7 +612,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           // stray row now so it can't linger active and resurrect the overlay.
           if (sessionKeyRef.current) dispatch({ type: "setSessionId", id: sid });
           else push.endSession(sb, ids);
-        });
+        }).catch(() => {});
       }
     },
     [clock, sb]
@@ -661,7 +673,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             setPendingMatchId(matched);
             push.notify(sb, liveIdsNow, "matched", `It's a match on ${title?.title}! 💞`, id);
           }
-        });
+        }).catch(() => {});
         return false;
       }
 
@@ -699,6 +711,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ query: t, audience: "together", asker: getWhoami() }),
+          signal: AbortSignal.timeout(30_000),
         });
         const data = (await res.json()) as {
           intro: string;

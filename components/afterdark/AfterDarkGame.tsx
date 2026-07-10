@@ -68,6 +68,8 @@ export function AfterDarkGame() {
     setHoldPct(0);
   };
   useEffect(() => () => endHold(), []);
+  const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (rollTimerRef.current) clearTimeout(rollTimerRef.current); }, []);
   useEffect(() => {
     maxHeatRef.current = Math.max(maxHeatRef.current, game.heat);
   }, [game.heat]);
@@ -80,7 +82,7 @@ export function AfterDarkGame() {
     setRolling(true);
     setCard(null);
     setTimer(null);
-    setTimeout(() => {
+    rollTimerRef.current = setTimeout(() => {
       const next = draw(DECK, game);
       setCard(next);
       if (next.wild) setWildsDrawn((n) => n + 1);
