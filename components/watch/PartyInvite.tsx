@@ -5,15 +5,18 @@ import { motion } from "framer-motion";
 
 // Small, non-blocking invite card for a partner-started (or rehydrated own)
 // watch-along. It springs up above the bottom nav and stays until acted on —
-// never a full-screen takeover, never a vanishing toast.
+// never a full-screen takeover, never a vanishing toast. `mine` = this is my
+// own still-running session (came back to the app), so it reads as a resume.
 export function PartyInvite({
   partner,
   title,
+  mine = false,
   onJoin,
   onLater,
 }: {
   partner: User;
   title: Title;
+  mine?: boolean;
   onJoin: () => void;
   onLater: () => void;
 }) {
@@ -33,15 +36,23 @@ export function PartyInvite({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm leading-snug text-white/90">
-            <span className="font-semibold">{partner.name}</span> started a watch-along of{" "}
-            <span className="font-semibold">{title.title}</span> 💞
+            {mine ? (
+              <>
+                Your watch-along of <span className="font-semibold">{title.title}</span> is still going 💞
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">{partner.name}</span> started a watch-along of{" "}
+                <span className="font-semibold">{title.title}</span> 💞
+              </>
+            )}
           </p>
           <div className="mt-2 flex gap-2">
             <button
               onClick={onJoin}
               className="rounded-full bg-accent-gradient px-4 py-1.5 text-sm font-semibold text-white shadow-glow transition active:scale-95"
             >
-              Join 🍿
+              {mine ? "Resume 🍿" : "Join 🍿"}
             </button>
             <button
               onClick={onLater}

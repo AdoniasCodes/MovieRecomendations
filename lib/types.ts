@@ -207,6 +207,8 @@ export interface Reaction {
   at: number;
 }
 
+export type WatchPartyStatus = "in_progress" | "completed" | "dropped";
+
 /** a synced "watching together" session. Realtime-ready: swap the simulated
  * partner timers for a Supabase Realtime channel and this shape doesn't change. */
 export interface WatchSession {
@@ -217,6 +219,19 @@ export interface WatchSession {
   participants: string[]; // user ids currently "in" the session
   reactions: Reaction[];
   active: boolean;
+  status?: WatchPartyStatus;
+}
+
+/** a saved watch-along record for the Us tab history (live mode). */
+export interface WatchPartyRecord {
+  id: string;
+  titleId: string;
+  hostId: string; // semantic "me" | "her"
+  startedAt: number;
+  endedAt?: number;
+  status: WatchPartyStatus;
+  active: boolean;
+  reactionCount: number;
 }
 
 export interface Scored {

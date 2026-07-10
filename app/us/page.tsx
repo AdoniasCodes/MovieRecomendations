@@ -1,5 +1,6 @@
 "use client";
 
+import { Watchalongs } from "@/components/us/Watchalongs";
 import { cn } from "@/lib/cn";
 import { getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
@@ -117,6 +118,9 @@ export default function UsPage() {
           })}
         </div>
       </section>
+
+      {/* watch-along history */}
+      <Watchalongs />
 
       {/* activity feed */}
       <section>

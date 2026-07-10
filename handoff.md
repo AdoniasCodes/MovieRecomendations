@@ -1,6 +1,32 @@
 # handoff.md — Amore Movies
 
-_Updated: 2026-07-10_
+_Updated: 2026-07-11_
+
+## Current phase (2026-07-11): Phase 10 "Watch-along that remembers" SHIPPED, 1 manual step
+Watch-alongs are now durable, resumable records instead of ephemeral overlays:
+- **Resume**: an active session survives leaving the app. Re-entry re-offers it (invite
+  card reads "still going" for the host, "started a watch-along" for the partner);
+  minimizing shows a left-anchored resume chip; tapping the "started a watch-along"
+  NOTIFICATION now rejoins the running session instead of dead-ending on the title page.
+- **Saved conversations**: reactions/messages always persisted (reactions table); now
+  browsable per night in Us > Watchalongs, bubbles with attribution.
+- **Lifecycle**: in_progress / completed / dropped. "Wrap up" button inside the party
+  opens a blocking modal (We finished it / We dropped it / Keep watching). Auto-retired
+  sessions (new one started over an old one) become dropped.
+- **Delete**: per-record delete in Us > Watchalongs with a blocking confirm; removes the
+  session + conversation for both (reactions cascade via FK).
+- New seam pieces: lib/party-ui.ts (per-mount accepted/minimized UI state, outside the
+  store so refetch re-hydration can't reset it), store actions endWatchParty(status) /
+  listPartyHistory / partyConversation / deleteParty, live.ts setSessionStatus /
+  deleteSession / listWatchSessions / fetchSessionReactions, components/us/Watchalongs.tsx.
+- Verified by a full two-user E2E on a local prod build (12/12 checks): start, live chat
+  both ways, minimize + chip, reload-resume with history intact, notification rejoin,
+  wrap-up closing both devices, history + conversation in Us, delete. Test data removed.
+
+**PANDA MUST DO: apply `supabase/migrations/0005_watchalong_history.sql` in the Supabase
+SQL editor.** Until then the app degrades gracefully: wrap-up still ends the night, but
+every finished record shows as "Dropped" (the status column doesn't exist yet); after the
+migration, completed/dropped stick correctly.
 
 ## Current phase (2026-07-10): Phase 9 "Diagnose + cleanse" SHIPPED
 Panda reported: drawer taps dead, app way slower, Hermi offline, nudges not arriving.

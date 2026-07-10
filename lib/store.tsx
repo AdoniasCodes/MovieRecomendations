@@ -13,6 +13,8 @@ import {
 import { useAuth } from "./auth";
 import {
   type Ids,
+  fetchSessionReactions,
+  listWatchSessions,
   loadCoupleState,
   push,
   pushVoteAndMaybeMatch,
@@ -36,6 +38,8 @@ import type {
   Vote,
   VoteValue,
   Watcher,
+  WatchPartyRecord,
+  WatchPartyStatus,
   WatchSession,
   WatchStatus,
   WatchedRecord,
@@ -333,7 +337,14 @@ interface StoreCtx extends State {
   // watch-along
   startWatchParty: (id: string) => void;
   joinWatchParty: (userId: string) => void;
-  endWatchParty: () => void;
+  /** wrap up the active party with its final status (completed | dropped) */
+  endWatchParty: (status: WatchPartyStatus) => void;
+  /** saved watch-alongs, newest first (live mode; [] in demo) */
+  listPartyHistory: () => Promise<WatchPartyRecord[]>;
+  /** the saved conversation of one watch-along */
+  partyConversation: (sessionId: string) => Promise<Reaction[]>;
+  /** delete a watch-along record and its conversation forever */
+  deleteParty: (sessionId: string) => Promise<void>;
   /** true when the active session was started by me during this mount (open it
    * full-screen); false for partner-started or rehydrated sessions (invite). */
   iStarted: boolean;
@@ -611,22 +622,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           // if the session was already cancelled before its id landed, close the
           // stray row now so it can't linger active and resurrect the overlay.
           if (sessionKeyRef.current) dispatch({ type: "setSessionId", id: sid });
-          else push.endSession(sb, ids);
+          else void push.setSessionStatus(sb, sid, "dropped");
         }).catch(() => {});
       }
     },
     [clock, sb]
   );
   const joinWatchParty = useCallback((userId: string) => dispatch({ type: "joinParty", userId }), []);
-  const endWatchParty = useCallback(() => {
+  const endWatchParty = useCallback((status: WatchPartyStatus) => {
     const ids = liveRef.current;
     // record dismissal of the current session id so the realtime race window (a
     // refetch landing before the DB update commits) cannot re-open it.
     const key = sessionKeyRef.current;
+    const sid = sessionIdRef.current;
     if (key) dismissSession(key);
     startedThisMountRef.current = false;
     dispatch({ type: "endParty" });
-    if (ids && sb) push.endSession(sb, ids);
+    if (ids && sb) {
+      // prefer the id-scoped status write; fall back to close-all when the
+      // session id hasn't landed yet (raced start).
+      if (sid) void push.setSessionStatus(sb, sid, status);
+      else push.endSession(sb, ids);
+    }
+  }, [sb]);
+  const listPartyHistory = useCallback(async (): Promise<WatchPartyRecord[]> => {
+    const ids = liveRef.current;
+    if (!ids || !sb) return [];
+    try {
+      return await listWatchSessions(sb, ids);
+    } catch {
+      return [];
+    }
+  }, [sb]);
+  const partyConversation = useCallback(async (sessionId: string): Promise<Reaction[]> => {
+    const ids = liveRef.current;
+    if (!ids || !sb) return [];
+    try {
+      return await fetchSessionReactions(sb, ids, sessionId);
+    } catch {
+      return [];
+    }
+  }, [sb]);
+  const deleteParty = useCallback(async (sessionId: string) => {
+    const ids = liveRef.current;
+    if (!ids || !sb) return;
+    // deleting the active party also closes it locally on this device
+    if (sessionIdRef.current === sessionId) {
+      const key = sessionKeyRef.current;
+      if (key) dismissSession(key);
+      startedThisMountRef.current = false;
+      dispatch({ type: "endParty" });
+    }
+    await push.deleteSession(sb, sessionId);
   }, [sb]);
   const sendReaction = useCallback(
     (content: string, kind: "emoji" | "text" = "emoji", by?: string) => {
@@ -779,6 +826,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       startWatchParty,
       joinWatchParty,
       endWatchParty,
+      listPartyHistory,
+      partyConversation,
+      deleteParty,
       iStarted: startedThisMountRef.current,
       sendReaction,
       vote,
@@ -788,7 +838,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       who, state, ready, live, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
       rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
-      joinWatchParty, endWatchParty, sendReaction, vote, askAi,
+      joinWatchParty, endWatchParty, listPartyHistory, partyConversation, deleteParty,
+      sendReaction, vote, askAi,
     ]
   );
 

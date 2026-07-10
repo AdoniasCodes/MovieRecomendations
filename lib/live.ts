@@ -5,8 +5,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  AiMessage, Match, Note, Notification, Reaction, Vote, Watcher, WatchSession,
-  WatchedRecord, WatchlistItem,
+  AiMessage, Match, Note, Notification, Reaction, Vote, Watcher, WatchPartyRecord,
+  WatchPartyStatus, WatchSession, WatchedRecord, WatchlistItem,
 } from "./types";
 import { getLastActivity } from "./activity";
 
@@ -93,6 +93,7 @@ export async function loadCoupleState(
     session = {
       id: s.id, titleId: s.title_id, hostId: who(s.host_id), startedAt: ts(s.started_at),
       participants: [...parts], reactions, active: true,
+      status: (s.status as WatchSession["status"]) ?? "in_progress",
     };
   }
 
@@ -204,11 +205,20 @@ export const push = {
   },
   startSession: async (sb: SupabaseClient, ids: Ids, titleId: string): Promise<string | null> => {
     // never leave two active rows: retire any existing active session first.
-    await sb
+    // An auto-retired session was never wrapped up on purpose, so it reads as
+    // dropped. Falls back without the column until migration 0005 is applied.
+    const retired = await sb
       .from("watch_sessions")
-      .update({ active: false, ended_at: new Date().toISOString() })
+      .update({ active: false, ended_at: new Date().toISOString(), status: "dropped" })
       .eq("couple_id", ids.couple)
       .eq("active", true);
+    if (retired.error) {
+      await sb
+        .from("watch_sessions")
+        .update({ active: false, ended_at: new Date().toISOString() })
+        .eq("couple_id", ids.couple)
+        .eq("active", true);
+    }
     const { data } = await sb
       .from("watch_sessions")
       .insert({ couple_id: ids.couple, title_id: titleId, host_id: ids.my, active: true })
@@ -218,6 +228,22 @@ export const push = {
   },
   // close ALL active rows for the couple (a duplicate/raced row can never linger
   // and auto-open the overlay on next load).
+  // wrap up the current session with a final status (falls back to a plain
+  // close until migration 0005 lands). Ends by id so a raced new session is safe.
+  setSessionStatus: async (sb: SupabaseClient, sessionId: string, status: WatchPartyStatus) => {
+    const res = await sb
+      .from("watch_sessions")
+      .update({ active: false, ended_at: new Date().toISOString(), status })
+      .eq("id", sessionId);
+    if (res.error) {
+      await run(
+        sb.from("watch_sessions").update({ active: false, ended_at: new Date().toISOString() }).eq("id", sessionId)
+      );
+    }
+  },
+  // delete a watch-along record; its reactions cascade with it (FK on delete cascade).
+  deleteSession: (sb: SupabaseClient, sessionId: string) =>
+    run(sb.from("watch_sessions").delete().eq("id", sessionId)),
   endSession: (sb: SupabaseClient, ids: Ids) =>
     run(sb.from("watch_sessions")
       .update({ active: false, ended_at: new Date().toISOString() })
@@ -264,6 +290,46 @@ export async function pushVoteAndMaybeMatch(
     return titleId;
   }
   return null;
+}
+
+// ---- watch-along history (Us tab) ------------------------------------------
+
+/** every saved watch-along, newest first, with its message count. */
+export async function listWatchSessions(sb: SupabaseClient, ids: Ids): Promise<WatchPartyRecord[]> {
+  const who = (uid: string): Watcher => (uid === ids.my ? "me" : "her");
+  const { data } = await sb
+    .from("watch_sessions")
+    .select("*, reactions(count)")
+    .eq("couple_id", ids.couple)
+    .order("started_at", { ascending: false })
+    .limit(60);
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    titleId: r.title_id,
+    hostId: who(r.host_id),
+    startedAt: ts(r.started_at),
+    endedAt: r.ended_at ? ts(r.ended_at) : undefined,
+    status: (r.status as WatchPartyStatus) ?? (r.active ? "in_progress" : "dropped"),
+    active: r.active,
+    reactionCount: r.reactions?.[0]?.count ?? 0,
+  }));
+}
+
+/** the full saved conversation of one watch-along, oldest first. */
+export async function fetchSessionReactions(
+  sb: SupabaseClient,
+  ids: Ids,
+  sessionId: string
+): Promise<Reaction[]> {
+  const who = (uid: string): Watcher => (uid === ids.my ? "me" : "her");
+  const { data } = await sb
+    .from("reactions")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("at", { ascending: true });
+  return (data ?? []).map((r) => ({
+    id: r.id, by: who(r.by_user), kind: r.kind, content: r.content, at: ts(r.at),
+  }));
 }
 
 // ---- realtime + presence -------------------------------------------------

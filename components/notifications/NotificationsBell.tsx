@@ -1,6 +1,7 @@
 "use client";
 
 import { getTitle } from "@/lib/mock-data";
+import { acceptParty } from "@/lib/party-ui";
 import { useStore } from "@/lib/store";
 import { openTitleSheet } from "@/lib/title-sheet";
 import type { Notification } from "@/lib/types";
@@ -120,7 +121,24 @@ export function NotificationsBell() {
                   <p className="py-10 text-center text-sm text-white/40">Nothing yet. Go like something 😉</p>
                 )}
                 {store.notifications.map((n) => (
-                  <Row key={n.id} n={n} latest={latest} mine={n.actorId === store.me.id} />
+                  <Row
+                    key={n.id}
+                    n={n}
+                    latest={latest}
+                    mine={n.actorId === store.me.id}
+                    onOpen={() => {
+                      // a watch-along notification rejoins the STILL-RUNNING
+                      // session instead of dead-ending on the title page
+                      const s = store.session;
+                      if (n.type === "started" && s?.active && s.titleId === n.titleId) {
+                        store.joinWatchParty(store.me.id);
+                        acceptParty(s.id ?? String(s.startedAt));
+                        setOpen(false);
+                        return;
+                      }
+                      if (n.titleId) openTitleSheet(n.titleId);
+                    }}
+                  />
                 ))}
               </div>
             </motion.div>
@@ -131,11 +149,21 @@ export function NotificationsBell() {
   );
 }
 
-function Row({ n, latest, mine }: { n: Notification; latest: number; mine: boolean }) {
+function Row({
+  n,
+  latest,
+  mine,
+  onOpen,
+}: {
+  n: Notification;
+  latest: number;
+  mine: boolean;
+  onOpen: () => void;
+}) {
   const t = n.titleId ? getTitle(n.titleId) : null;
   return (
     <button
-      onClick={() => t && openTitleSheet(t.id)}
+      onClick={() => t && onOpen()}
       className="flex w-full items-center gap-3 rounded-2xl bg-white/[0.04] p-3 text-left transition hover:bg-white/[0.07]"
     >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-base">

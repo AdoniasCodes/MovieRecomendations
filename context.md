@@ -301,6 +301,17 @@ E2E verified: presence both ways, nudge lands as DB row + banner in under 2s, ba
 auto-dismisses at 8s, drawer fully clickable underneath, 0 self-refetches, partner
 actions refetch, SPA navs 33-190ms, SW cached reload 122ms.
 
+## 5h. Phase 10 — "Watch-along that remembers" (SHIPPED 2026-07-11)
+
+Watch-alongs became durable couple records: resumable while active (invite card on
+re-entry, minimize-to-chip, notification tap rejoins), conversations browsable in
+Us > Watchalongs, lifecycle status (in_progress/completed/dropped) set from a blocking
+"Wrap up" modal inside the party, and per-record delete (cascades the conversation).
+Key decision: per-mount UI state (accepted/minimized) lives in lib/party-ui.ts, a tiny
+external store OUTSIDE the store seam, because store hydration replaces state wholesale
+on every realtime refetch and must not reset what this device has open. Migration 0005
+adds watch_sessions.status; all writes fall back gracefully until it is applied.
+
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.
 - Richer watch-along (synced playback position, video provider deep-links).
