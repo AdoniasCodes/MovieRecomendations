@@ -23,10 +23,9 @@ Watch-alongs are now durable, resumable records instead of ephemeral overlays:
   both ways, minimize + chip, reload-resume with history intact, notification rejoin,
   wrap-up closing both devices, history + conversation in Us, delete. Test data removed.
 
-**PANDA MUST DO: apply `supabase/migrations/0005_watchalong_history.sql` in the Supabase
-SQL editor.** Until then the app degrades gracefully: wrap-up still ends the night, but
-every finished record shows as "Dropped" (the status column doesn't exist yet); after the
-migration, completed/dropped stick correctly.
+Migration 0005 APPLIED by Panda (2026-07-11) and verified live: a wrap-up as "We finished
+it" persists status='completed' and renders the Completed chip in Us > Watchalongs
+(probe10 E2E against the live DB, test record deleted after). No manual steps pending.
 
 ## Current phase (2026-07-10): Phase 9 "Diagnose + cleanse" SHIPPED
 Panda reported: drawer taps dead, app way slower, Hermi offline, nudges not arriving.
