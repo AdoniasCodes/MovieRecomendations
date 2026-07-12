@@ -1,72 +1,101 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
-import { enablePush, pushPermission, refreshPushSubscription, type PushSetupResult } from "@/lib/push";
+import {
+  enablePush,
+  hasActiveSubscription,
+  refreshPushSubscription,
+  type PushSetupResult,
+} from "@/lib/push";
 import { getSupabase } from "@/lib/supabase";
 import { AnimatePresence, motion } from "framer-motion";
 import { BellRing } from "lucide-react";
 import { useEffect, useState } from "react";
 
+const EXPLAIN: Record<Exclude<PushSetupResult, "granted">, string> = {
+  denied:
+    "Notifications are blocked for this app in your phone settings. Allow them for Amore Movies, then try again.",
+  "ios-install":
+    "On iPhone, push only works from the installed app. Share, then Add to Home Screen, then open Amore Movies from your home screen and turn alerts on there.",
+  "no-key":
+    "The server is missing its push keys, so no device can subscribe right now. Panda needs to check the Netlify VAPID variables.",
+  "no-sw":
+    "This device has no service worker yet. Close and reopen the app once, then try again.",
+  unsupported: "This browser can't do web push. Try the installed app or a different browser.",
+  error: "Could not register this device. Check your connection and try again.",
+};
+
 // Profile card: register this device for web push (nudges, matches, notes).
+// The card reflects the REAL state: a saved subscription row, not just browser
+// permission, and it is always tappable so a half-enabled device can retry.
 export function EnableAlerts() {
   const auth = useAuth();
-  const [state, setState] = useState<"idle" | "busy" | PushSetupResult>("idle");
+  const [active, setActive] = useState<boolean | null>(null); // null = checking
+  const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<string | null>(null);
   const sb = getSupabase();
   const uid = auth.session?.user?.id;
 
-  // permission already granted on this device: silently keep the stored
-  // subscription fresh, and reflect status in the card
+  // on mount: self-heal a granted-but-unsaved device, then report the truth
   useEffect(() => {
     if (!sb || !uid) return;
-    if (pushPermission() === "granted") {
-      setState("granted");
-      void refreshPushSubscription(sb, uid);
-    }
+    let stale = false;
+    (async () => {
+      await refreshPushSubscription(sb, uid);
+      const ok = await hasActiveSubscription(sb);
+      if (!stale) setActive(ok);
+    })();
+    return () => {
+      stale = true;
+    };
   }, [sb, uid]);
 
   if (!sb || !uid) return null; // demo mode: nothing to subscribe
 
   const enable = async () => {
-    setState("busy");
-    const res = await enablePush(sb, uid);
-    setState(res);
-    if (res === "denied") {
-      setModal(
-        "Notifications are blocked for this app in your phone settings. Allow them for Amore Movies, then try again."
-      );
-    } else if (res === "unsupported") {
-      setModal(
-        "This browser can't do push here. On iPhone, install the app to your home screen first (Share, then Add to Home Screen), then enable alerts from inside the installed app."
-      );
-    } else if (res === "error") {
-      setModal("Could not register this device. Check your connection and try again.");
+    setBusy(true);
+    try {
+      const res = await enablePush(sb, uid);
+      if (res === "granted") {
+        setActive(true);
+        setModal("Alerts are on. Nudges and matches will knock even when the app is closed 💞");
+      } else {
+        setActive(false);
+        setModal(EXPLAIN[res]);
+      }
+    } catch {
+      setActive(false);
+      setModal(EXPLAIN.error);
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <>
       <button
-        onClick={state === "granted" ? undefined : enable}
-        disabled={state === "busy"}
+        onClick={enable}
+        disabled={busy}
         className="glass flex w-full items-center gap-3 rounded-2xl p-4 text-left text-sm transition hover:bg-white/[0.08] disabled:opacity-60"
       >
-        <BellRing className={`h-5 w-5 ${state === "granted" ? "text-accent-glow" : "text-white/50"}`} />
+        <BellRing className={`h-5 w-5 ${active ? "text-accent-glow" : "text-white/50"}`} />
         <span>
           <span className="block font-semibold">
-            {state === "granted" ? "Alerts are on for this device" : "Turn on alerts"}
+            {active ? "Alerts are on for this device" : "Turn on alerts"}
           </span>
           <span className="text-xs text-white/45">
-            {state === "granted"
-              ? "Nudges & matches will knock even when the app is closed"
-              : state === "busy"
-                ? "Asking your phone nicely..."
-                : "Get nudges & matches even when the app is closed"}
+            {busy
+              ? "Asking your phone nicely..."
+              : active
+                ? "Nudges & matches knock even when the app is closed. Tap to re-check."
+                : active === null
+                  ? "Checking this device..."
+                  : "Get nudges & matches even when the app is closed"}
           </span>
         </span>
       </button>
 
-      {/* blocking error modal, house rule: no vanishing toasts for errors */}
+      {/* blocking modal, house rule: no vanishing toasts */}
       <AnimatePresence>
         {modal && (
           <motion.div

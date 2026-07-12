@@ -1,7 +1,15 @@
 // Amore Movies service worker — offline app shell.
 // Registered only in production (see RegisterSW.tsx) to avoid dev caching pain.
-const CACHE = "amore-v4";
-const NAV_TIMEOUT = 3500; // no-cache fallback ceiling for a first-ever visit
+//
+// Caching contract (learned the hard way — v4 cached RSC payloads/shell
+// cache-first, which after a deploy served a stale build, made Next.js
+// hard-reload on every client navigation, and re-showed the splash on every
+// tab change):
+//   - navigations: network-first with a short timeout, cache fallback (offline)
+//   - /_next/static + images/fonts/icons: cache-first (content-hashed/immutable)
+//   - EVERYTHING else (RSC payloads, JSON, dynamic GETs): network only, never cached
+const CACHE = "amore-v5";
+const NAV_TIMEOUT = 2500; // fall back to the cached shell if the network stalls
 const SHELL = ["/", "/discover", "/watchlist", "/us", "/profile", "/offline", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -53,45 +61,43 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
+// True static assets only: content-hashed chunks + media that never change
+// under the same URL. Safe to serve cache-first forever.
+function isImmutable(url) {
+  if (url.pathname.startsWith("/_next/static/")) return true;
+  return /\.(png|jpg|jpeg|webp|avif|gif|svg|ico|woff2?)$/.test(url.pathname);
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
 
-  // never cache the AI API — always go to network
   const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  // dynamic surface: API + RSC payloads + anything non-immutable → network only
   if (url.pathname.startsWith("/api/")) return;
 
-  // navigations: cached shell instantly, refresh the cache in the background
-  // (stale-while-revalidate). The app is a shell + client data fetches, so a
-  // cached page is always safe to serve; waiting on a flaky network for HTML
-  // just made every open feel seconds slower. First-ever visits (no cache yet)
-  // still go network-first with a timeout.
+  // navigations: network-first (fresh build always wins), cached shell as the
+  // offline / stalled-network fallback.
   if (req.mode === "navigate") {
-    const refresh = fetch(req)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-        return res;
-      });
+    const fromNetwork = fetch(req).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(req, copy));
+      return res;
+    });
+    const shellFallback = () =>
+      caches.match(req).then((r) => r || caches.match("/offline").then((off) => off || caches.match("/")));
     event.respondWith(
-      caches.match(req).then((cached) => {
-        if (cached) {
-          refresh.catch(() => {}); // background revalidate; failure is fine
-          return cached;
-        }
-        const shellFallback = () =>
-          caches.match("/offline").then((off) => off || caches.match("/"));
-        return Promise.race([
-          refresh,
-          new Promise((resolve) => setTimeout(() => resolve(shellFallback()), NAV_TIMEOUT)),
-        ]).catch(shellFallback);
-      })
+      Promise.race([
+        fromNetwork,
+        new Promise((resolve) => setTimeout(() => resolve(shellFallback()), NAV_TIMEOUT)),
+      ]).catch(shellFallback)
     );
     return;
   }
 
-  // same-origin static assets: cache-first
-  if (url.origin === self.location.origin) {
+  // immutable assets: cache-first
+  if (isImmutable(url)) {
     event.respondWith(
       caches.match(req).then(
         (cached) =>
@@ -106,4 +112,6 @@ self.addEventListener("fetch", (event) => {
       )
     );
   }
+  // everything else (RSC `_rsc` payloads, JSON, misc): fall through to network,
+  // no SW involvement, nothing cached.
 });

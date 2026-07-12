@@ -136,7 +136,8 @@ export type NotificationType =
   | "rated"
   | "nudge"
   | "note"
-  | "ai";
+  | "ai"
+  | "plan";
 
 export interface Notification {
   id: string;
@@ -183,9 +184,27 @@ export interface ActivityEvent {
     | "matched"
     | "rated"
     | "finished"
-    | "status";
+    | "status"
+    | "note"
+    | "party"
+    | "plan";
   titleId?: string;
   detail?: string;
+  createdAt: number;
+}
+
+// ---- Watch night plans -----------------------------------------------------
+
+export type PlanStatus = "planned" | "done" | "cancelled";
+
+/** a planned movie night, synced for the couple (watch_plans table). */
+export interface Plan {
+  id: string;
+  titleId: string;
+  plannedBy: Watcher;
+  scheduledAt: number;
+  status: PlanStatus;
+  remindedAt?: number;
   createdAt: number;
 }
 

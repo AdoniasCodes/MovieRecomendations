@@ -1,7 +1,7 @@
 "use client";
 
 import { IdentityPicker, PinPad } from "@/components/auth/PinLogin";
-import { getLastActivity } from "@/lib/activity";
+import { getLastActivity, touchActivity } from "@/lib/activity";
 import { useAuth } from "@/lib/auth";
 import { setWhoami } from "@/lib/identity";
 import { PIN_IDENTITIES, type PinIdentity } from "@/lib/pin-accounts";
@@ -28,6 +28,23 @@ export function WelcomeGate() {
     const match = PIN_IDENTITIES.find((p) => p.email === email);
     if (match) setWhoami(match.key);
   }, [auth.session]);
+
+  // SOFT GATE: a signed-in known identity that was active under an hour ago
+  // walks straight in. Splash + picker only appear on first open, after
+  // sign-out, or after a long idle. A missing activity stamp means "unknown,
+  // not idle-forever": stamp now so it can never instant-relock.
+  useEffect(() => {
+    if (getLastActivity() === 0) touchActivity();
+    if (auth.loading) return; // decide only once the session is known
+    const email = auth.session?.user.email;
+    const known = email ? PIN_IDENTITIES.find((p) => p.email === email) : undefined;
+    if (known && Date.now() - getLastActivity() < IDLE_MS) {
+      setWhoami(known.key);
+      touchActivity();
+      setEntered(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.loading, auth.session]);
 
   // pick who you are → straight in, or PIN when a fresh sign-in is needed
   const pick = useCallback(
@@ -89,6 +106,11 @@ export function WelcomeGate() {
   const booting = auth.loading && !waitedTooLong;
 
   if (entered) return null;
+
+  // While auth resolves, hold a neutral black screen instead of flashing the
+  // splash: the common case (fresh session + recent activity) enters directly
+  // via the soft gate. The 5s escape hatch still forces the splash on a hung boot.
+  if (booting) return <div className="fixed inset-0 z-[100] bg-black" />;
 
   const showLogin = phase !== "splash";
 

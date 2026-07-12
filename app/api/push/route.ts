@@ -4,6 +4,15 @@ import webpush from "web-push";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// The VAPID public key is public by definition; serving it at runtime frees
+// the client from build-time env inlining (which failed on Netlify when the
+// var was scoped to functions only).
+export async function GET() {
+  const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const priv = process.env.VAPID_PRIVATE_KEY;
+  return Response.json({ configured: !!(pub && priv), publicKey: pub ?? null });
+}
+
 // Sends a web push to every registered device of `toUserId`.
 // Auth: the caller's Supabase JWT. RLS on push_subscriptions guarantees the
 // caller can only read (and therefore push to) devices of their own couple.

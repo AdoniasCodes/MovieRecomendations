@@ -5,10 +5,13 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  AiMessage, Match, Note, Notification, Reaction, Vote, Watcher, WatchPartyRecord,
-  WatchPartyStatus, WatchSession, WatchedRecord, WatchlistItem,
+  ActivityEvent, AiMessage, Match, Note, Notification, Plan, PlanStatus, Reaction, Vote,
+  Watcher, WatchPartyRecord, WatchPartyStatus, WatchSession, WatchedRecord, WatchlistItem,
 } from "./types";
 import { getLastActivity } from "./activity";
+import {
+  clearOtherCouples, enqueue, readQueue, removeOps, type QueuedKind, type QueuedOp,
+} from "./write-queue";
 
 export interface Ids {
   couple: string;
@@ -26,6 +29,8 @@ export interface CoupleSlice {
   notifications: Notification[];
   session: WatchSession | null;
   aiMessages: AiMessage[];
+  activity: ActivityEvent[];
+  plans: Plan[];
 }
 
 const ts = (s: string | null) => (s ? Date.parse(s) : 0);
@@ -40,7 +45,7 @@ export async function loadCoupleState(
   const who = (uid: string): Watcher => (uid === ids.my ? "me" : "her");
   const c = ids.couple;
 
-  const [wl, vt, mt, wd, nt, nf, ws, am] = await Promise.all([
+  const [wl, vt, mt, wd, nt, nf, ws, am, ac, pl] = await Promise.all([
     sb.from("watchlist").select("*").eq("couple_id", c),
     sb.from("votes").select("*").eq("couple_id", c),
     sb.from("matches").select("*").eq("couple_id", c),
@@ -52,6 +57,9 @@ export async function loadCoupleState(
       .order("started_at", { ascending: false }).limit(1),
     // grab the LAST 100 by fetching newest-first then reversing to chronological
     sb.from("ai_messages").select("*").eq("couple_id", c).order("created_at", { ascending: false }).limit(100),
+    // pre-0006 these two error out; `?? []` degrades them gracefully
+    sb.from("activity").select("*").eq("couple_id", c).order("created_at", { ascending: false }).limit(100),
+    sb.from("watch_plans").select("*").eq("couple_id", c).eq("status", "planned").order("scheduled_at", { ascending: true }),
   ]);
 
   const watchlist: WatchlistItem[] = (wl.data ?? []).map((r) => ({
@@ -97,7 +105,26 @@ export async function loadCoupleState(
     };
   }
 
-  return { watchlist, votes, matches, watched, ratings, notes, notifications, session, aiMessages };
+  const activity: ActivityEvent[] = (ac.data ?? []).map((r) => ({
+    id: r.id,
+    actorId: who(r.actor_id),
+    type: r.type,
+    titleId: r.title_id ?? undefined,
+    detail: r.detail ?? undefined,
+    createdAt: ts(r.created_at),
+  }));
+
+  const plans: Plan[] = (pl.data ?? []).map((r) => ({
+    id: r.id,
+    titleId: r.title_id,
+    plannedBy: who(r.planned_by),
+    scheduledAt: ts(r.scheduled_at),
+    status: r.status as PlanStatus,
+    remindedAt: r.reminded_at ? ts(r.reminded_at) : undefined,
+    createdAt: ts(r.created_at),
+  }));
+
+  return { watchlist, votes, matches, watched, ratings, notes, notifications, session, aiMessages, activity, plans };
 }
 
 // Fire-and-forget web push to the partner's registered devices. Failure is
@@ -107,12 +134,18 @@ async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string) {
     const { data } = await sb.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return;
-    await fetch("/api/push", {
+    const res = await fetch("/api/push", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ toUserId, title: "Amore Movies 💞", body, url: "/" }),
       signal: AbortSignal.timeout(10_000),
     });
+    // observable via remote debugging: a 503 or {devices:0} means push is
+    // misconfigured or the partner never subscribed — don't fail silently.
+    const result = (await res.json().catch(() => null)) as { sent?: number; devices?: number } | null;
+    if (!res.ok || (result && result.devices === 0)) {
+      console.warn("[push] send degraded:", res.status, result);
+    }
   } catch {
     /* best effort */
   }
@@ -147,45 +180,139 @@ function run<T>(builder: PromiseLike<T>): Promise<T | undefined> {
   return Promise.resolve(builder).catch(() => undefined);
 }
 
-export const push = {
-  save: (sb: SupabaseClient, ids: Ids, titleId: string) => {
-    markLocalWrite("watchlist");
-    return run(sb.from("watchlist").upsert(
-      { couple_id: ids.couple, title_id: titleId, added_by: ids.my, status: "interested" },
+// ---- offline write queue -----------------------------------------------
+// supabase-js resolves HTTP failures with {error} and REJECTS on network
+// failures; attempt() folds both into one success signal.
+async function attempt(builder: PromiseLike<unknown>): Promise<boolean> {
+  try {
+    const res = (await builder) as { error?: unknown } | null | undefined;
+    return !(res && res.error);
+  } catch {
+    return false;
+  }
+}
+
+// Builders for the queueable, IDEMPOTENT mirrors only (semantic args in).
+// notify/note/aiMessage/reactions/sessions are never queued: replaying an
+// insert can duplicate, which is worse than losing one.
+type MirrorArgs = {
+  titleId?: string;
+  status?: string;
+  cinema?: boolean;
+  watcher?: Watcher;
+  rating?: number;
+  value?: string;
+};
+const mirror: Record<QueuedKind, (sb: SupabaseClient, ids: Ids, a: MirrorArgs) => PromiseLike<unknown>> = {
+  save: (sb, ids, a) =>
+    sb.from("watchlist").upsert(
+      { couple_id: ids.couple, title_id: a.titleId, added_by: ids.my, status: "interested" },
       { onConflict: "couple_id,title_id", ignoreDuplicates: true }
-    ));
-  },
-  unsave: (sb: SupabaseClient, ids: Ids, titleId: string) => {
-    markLocalWrite("watchlist");
-    return run(sb.from("watchlist").delete().eq("couple_id", ids.couple).eq("title_id", titleId));
-  },
-  status: (sb: SupabaseClient, ids: Ids, titleId: string, status: string) => {
-    markLocalWrite("watchlist");
-    return run(sb.from("watchlist").upsert(
-      { couple_id: ids.couple, title_id: titleId, added_by: ids.my, status },
+    ),
+  unsave: (sb, ids, a) => sb.from("watchlist").delete().eq("couple_id", ids.couple).eq("title_id", a.titleId),
+  status: (sb, ids, a) =>
+    sb.from("watchlist").upsert(
+      { couple_id: ids.couple, title_id: a.titleId, added_by: ids.my, status: a.status },
       { onConflict: "couple_id,title_id" }
-    ));
-  },
-  cinema: (sb: SupabaseClient, ids: Ids, titleId: string, cinema: boolean) => {
-    markLocalWrite("watchlist");
-    return run(sb.from("watchlist").upsert(
-      { couple_id: ids.couple, title_id: titleId, added_by: ids.my, status: "interested", cinema },
+    ),
+  cinema: (sb, ids, a) =>
+    sb.from("watchlist").upsert(
+      { couple_id: ids.couple, title_id: a.titleId, added_by: ids.my, status: "interested", cinema: a.cinema },
       { onConflict: "couple_id,title_id" }
-    ).then(() => {
-      markLocalWrite("watchlist");
-      return sb.from("watchlist").update({ cinema }).eq("couple_id", ids.couple).eq("title_id", titleId);
+    ).then(() => sb.from("watchlist").update({ cinema: a.cinema }).eq("couple_id", ids.couple).eq("title_id", a.titleId)),
+  watched: (sb, ids, a) =>
+    sb.from("watched").upsert(
+      {
+        couple_id: ids.couple, title_id: a.titleId, watcher: uid(ids, a.watcher!),
+        ...(a.rating != null ? { rating: a.rating } : {}),
+      },
+      { onConflict: "couple_id,title_id,watcher" }
+    ),
+  unwatch: (sb, ids, a) =>
+    sb.from("watched").delete().eq("couple_id", ids.couple).eq("title_id", a.titleId).eq("watcher", uid(ids, a.watcher!)),
+  vote: (sb, ids, a) =>
+    sb.from("votes").upsert(
+      { couple_id: ids.couple, title_id: a.titleId, user_id: ids.my, value: a.value },
+      { onConflict: "couple_id,title_id,user_id" }
+    ),
+};
+
+const echoTable: Record<QueuedKind, string> = {
+  save: "watchlist", unsave: "watchlist", status: "watchlist", cinema: "watchlist",
+  watched: "watched", unwatch: "watched", vote: "votes",
+};
+
+/** fire the mirror; on failure park it in the offline queue for replay. */
+function queuedMirror(sb: SupabaseClient, ids: Ids, kind: QueuedKind, args: MirrorArgs) {
+  markLocalWrite(echoTable[kind]);
+  void attempt(mirror[kind](sb, ids, args)).then((ok) => {
+    if (!ok) enqueue({ coupleId: ids.couple, kind, args });
+  });
+}
+
+/** Replay parked writes in strict FIFO (last-write-wins for 2 users). Stops on
+ * the first failure to preserve order. Returns how many ops landed. */
+export async function flushWriteQueue(sb: SupabaseClient, ids: Ids): Promise<number> {
+  clearOtherCouples(ids.couple);
+  const ops: QueuedOp[] = readQueue().filter((o) => o.coupleId === ids.couple);
+  const done: string[] = [];
+  for (const op of ops) {
+    markLocalWrite(echoTable[op.kind]);
+    const ok = await attempt(mirror[op.kind](sb, ids, op.args as MirrorArgs));
+    if (!ok) break;
+    done.push(op.id);
+    // a replayed like may quietly complete a match (accepted: no celebration
+    // overlay for this edge; the row arrives via the reconcile refetch)
+    const a = op.args as MirrorArgs;
+    if (op.kind === "vote" && (a.value === "like" || a.value === "love") && a.titleId) {
+      await maybeFormMatch(sb, ids, a.titleId).catch(() => null);
+    }
+  }
+  removeOps(done);
+  return done.length;
+}
+
+export const push = {
+  save: (sb: SupabaseClient, ids: Ids, titleId: string) => queuedMirror(sb, ids, "save", { titleId }),
+  unsave: (sb: SupabaseClient, ids: Ids, titleId: string) => queuedMirror(sb, ids, "unsave", { titleId }),
+  status: (sb: SupabaseClient, ids: Ids, titleId: string, status: string) =>
+    queuedMirror(sb, ids, "status", { titleId, status }),
+  cinema: (sb: SupabaseClient, ids: Ids, titleId: string, cinema: boolean) =>
+    queuedMirror(sb, ids, "cinema", { titleId, cinema }),
+  watched: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher, rating?: number) =>
+    queuedMirror(sb, ids, "watched", { titleId, watcher: w, ...(rating != null ? { rating } : {}) }),
+  unwatch: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher) =>
+    queuedMirror(sb, ids, "unwatch", { titleId, watcher: w }),
+  /** couple activity feed row (Us tab). High-frequency: self-echo suppressed. */
+  activity: (sb: SupabaseClient, ids: Ids, type: string, detail: string, titleId?: string) => {
+    markLocalWrite("activity");
+    return run(sb.from("activity").insert({
+      couple_id: ids.couple, actor_id: ids.my, type, title_id: titleId ?? null, detail,
     }));
   },
-  watched: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher, rating?: number) => {
-    markLocalWrite("watched");
-    return run(sb.from("watched").upsert(
-      { couple_id: ids.couple, title_id: titleId, watcher: uid(ids, w), ...(rating != null ? { rating } : {}) },
-      { onConflict: "couple_id,title_id,watcher" }
-    ));
-  },
-  unwatch: (sb: SupabaseClient, ids: Ids, titleId: string, w: Watcher) => {
-    markLocalWrite("watched");
-    return run(sb.from("watched").delete().eq("couple_id", ids.couple).eq("title_id", titleId).eq("watcher", uid(ids, w)));
+  /** plan a movie night. Low-frequency: refetch delivers the server id. */
+  plan: (sb: SupabaseClient, ids: Ids, titleId: string, scheduledAtISO: string) =>
+    run(sb.from("watch_plans").insert({
+      couple_id: ids.couple, title_id: titleId, planned_by: ids.my, scheduled_at: scheduledAtISO,
+    })),
+  cancelPlan: (sb: SupabaseClient, planId: string) =>
+    run(sb.from("watch_plans").update({ status: "cancelled" }).eq("id", planId)),
+  setPlanStatus: (sb: SupabaseClient, planId: string, status: PlanStatus) =>
+    run(sb.from("watch_plans").update({ status }).eq("id", planId)),
+  /** atomic single-flight reminder claim: true only for the one device that
+   * flips reminded_at from null. */
+  claimReminder: async (sb: SupabaseClient, planId: string): Promise<boolean> => {
+    try {
+      const { data, error } = await sb
+        .from("watch_plans")
+        .update({ reminded_at: new Date().toISOString() })
+        .eq("id", planId)
+        .is("reminded_at", null)
+        .select("id");
+      return !error && (data?.length ?? 0) > 0;
+    } catch {
+      return false;
+    }
   },
   note: (sb: SupabaseClient, ids: Ids, titleId: string, body: string) =>
     run(sb.from("notes").insert({ couple_id: ids.couple, title_id: titleId, author_id: ids.my, body })),
@@ -267,19 +394,8 @@ export const push = {
     })),
 };
 
-/** after my "like" vote, form a match if my partner already liked it. returns titleId if matched. */
-export async function pushVoteAndMaybeMatch(
-  sb: SupabaseClient,
-  ids: Ids,
-  titleId: string,
-  value: string
-): Promise<string | null> {
-  markLocalWrite("votes");
-  await sb.from("votes").upsert(
-    { couple_id: ids.couple, title_id: titleId, user_id: ids.my, value },
-    { onConflict: "couple_id,title_id,user_id" }
-  );
-  if (value !== "like" && value !== "love") return null;
+/** if my partner already liked this title, form the match. returns titleId if matched. */
+async function maybeFormMatch(sb: SupabaseClient, ids: Ids, titleId: string): Promise<string | null> {
   const { data: hers } = await sb
     .from("votes").select("value").eq("couple_id", ids.couple).eq("title_id", titleId).eq("user_id", ids.her).maybeSingle();
   if (hers && (hers.value === "like" || hers.value === "love")) {
@@ -290,6 +406,24 @@ export async function pushVoteAndMaybeMatch(
     return titleId;
   }
   return null;
+}
+
+/** after my "like" vote, form a match if my partner already liked it. returns titleId if matched. */
+export async function pushVoteAndMaybeMatch(
+  sb: SupabaseClient,
+  ids: Ids,
+  titleId: string,
+  value: string
+): Promise<string | null> {
+  markLocalWrite("votes");
+  const ok = await attempt(mirror.vote(sb, ids, { titleId, value }));
+  if (!ok) {
+    // offline: park the vote for replay; a completed match lands silently later
+    enqueue({ coupleId: ids.couple, kind: "vote", args: { titleId, value } });
+    return null;
+  }
+  if (value !== "like" && value !== "love") return null;
+  return maybeFormMatch(sb, ids, titleId);
 }
 
 // ---- watch-along history (Us tab) ------------------------------------------
@@ -334,7 +468,10 @@ export async function fetchSessionReactions(
 
 // ---- realtime + presence -------------------------------------------------
 
-const COUPLE_TABLES = ["watchlist", "votes", "matches", "watched", "notes", "notifications", "watch_sessions", "reactions", "ai_messages"];
+const COUPLE_TABLES = [
+  "watchlist", "votes", "matches", "watched", "notes", "notifications",
+  "watch_sessions", "reactions", "ai_messages", "activity", "watch_plans",
+];
 
 export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: () => void): () => void {
   const ch = sb.channel(`couple-changes:${ids.couple}`);

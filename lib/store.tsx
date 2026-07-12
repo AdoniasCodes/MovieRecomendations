@@ -14,6 +14,7 @@ import { useAuth } from "./auth";
 import {
   type Ids,
   fetchSessionReactions,
+  flushWriteQueue,
   listWatchSessions,
   loadCoupleState,
   push,
@@ -37,6 +38,8 @@ import type {
   Title,
   Vote,
   VoteValue,
+  Plan,
+  PlanStatus,
   Watcher,
   WatchPartyRecord,
   WatchPartyStatus,
@@ -59,6 +62,7 @@ interface State {
   notifications: Notification[];
   session: WatchSession | null;
   aiMessages: AiMessage[]; // shared Amore-AI chat thread (couple data)
+  plans: Plan[]; // upcoming watch nights (couple data)
   herOnline: boolean; // real Supabase presence in live mode; false otherwise
 }
 
@@ -73,7 +77,7 @@ function now() {
 // (live mode via Supabase). Solo/demo starts genuinely empty.
 const initialState: State = {
   watchlist: [], votes: [], matches: [], activity: [], ratings: {},
-  watched: [], notes: [], notifications: [], session: null, aiMessages: [], herOnline: false,
+  watched: [], notes: [], notifications: [], session: null, aiMessages: [], plans: [], herOnline: false,
 };
 
 // same clean base for LIVE mode
@@ -100,7 +104,10 @@ type Action =
   | { type: "presence"; herOnline: boolean }
   | { type: "setSessionId"; id: string }
   | { type: "aiMessage"; msg: AiMessage }
-  | { type: "activity"; event: ActivityEvent };
+  | { type: "activity"; event: ActivityEvent }
+  | { type: "planAdd"; plan: Plan }
+  | { type: "planRemove"; planId: string }
+  | { type: "planStatus"; planId: string; status: PlanStatus };
 
 function upsertWatched(list: WatchedRecord[], rec: WatchedRecord): WatchedRecord[] {
   const i = list.findIndex((w) => w.titleId === rec.titleId && w.watcher === rec.watcher);
@@ -277,6 +284,19 @@ function reducer(state: State, action: Action): State {
     }
     case "activity":
       return { ...state, activity: [action.event, ...state.activity] };
+    case "planAdd":
+      return { ...state, plans: [...state.plans, action.plan].sort((a, b) => a.scheduledAt - b.scheduledAt) };
+    case "planRemove":
+      return { ...state, plans: state.plans.filter((p) => p.id !== action.planId) };
+    case "planStatus":
+      return {
+        ...state,
+        // the store only carries upcoming (planned) nights; done/cancelled drop out
+        plans:
+          action.status === "planned"
+            ? state.plans.map((p) => (p.id === action.planId ? { ...p, status: action.status } : p))
+            : state.plans.filter((p) => p.id !== action.planId),
+      };
     default:
       return state;
   }
@@ -345,6 +365,9 @@ interface StoreCtx extends State {
   partyConversation: (sessionId: string) => Promise<Reaction[]>;
   /** delete a watch-along record and its conversation forever */
   deleteParty: (sessionId: string) => Promise<void>;
+  // watch night plans
+  planWatchNight: (titleId: string, at: number) => void;
+  cancelPlan: (planId: string) => void;
   /** true when the active session was started by me during this mount (open it
    * full-screen); false for partner-started or rehydrated sessions (invite). */
   iStarted: boolean;
@@ -376,6 +399,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   liveRef.current = liveIds;
   const sessionIdRef = useRef<string | undefined>(undefined);
   sessionIdRef.current = state.session?.id;
+  const plansRef = useRef<Plan[]>([]);
+  plansRef.current = state.plans;
   // stable key for the current session in BOTH modes (demo rows have no db id).
   const sessionKeyRef = useRef<string | undefined>(undefined);
   sessionKeyRef.current = state.session
@@ -433,7 +458,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         /* transient network failure: realtime/visibility will trigger the next reload */
       }
     };
+    // drain any offline-queued writes, then refetch once if something landed
+    const flush = async () => {
+      try {
+        const n = await flushWriteQueue(sb, ids);
+        if (n > 0 && !cancelled) reload();
+      } catch {
+        /* queue stays parked for the next trigger */
+      }
+    };
     reload();
+    flush();
     const unsub = subscribeCoupleChanges(sb, ids, () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(reload, 250);
@@ -444,15 +479,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
     // reconcile on foreground: self-echo suppression can skip a partner event
     // that lands inside our own write window, so refresh whenever the app
-    // comes back into view.
+    // comes back into view (after draining the offline queue).
     const onVisible = () => {
-      if (document.visibilityState === "visible") reload();
+      if (document.visibilityState === "visible") {
+        flush();
+        reload();
+      }
     };
+    const onOnline = () => flush();
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
       unsub();
       unpres();
     };
@@ -467,6 +508,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "hydrate", state: raw ? { ...initialState, ...JSON.parse(raw) } : initialState });
     } catch {}
   }, [live, ready]);
+
+  // MATCH FOR BOTH: when a fresh match row arrives via refetch (the partner
+  // completed it on their device), celebrate here too. Freshness-gated so
+  // hydrating historical matches at boot can never fire it; a match formed in
+  // the last two minutes counts (including just before opening the app).
+  const seenMatchesRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const current = new Set(state.matches.map((m) => m.titleId));
+    if (seenMatchesRef.current === null) {
+      seenMatchesRef.current = current;
+      return;
+    }
+    if (!pendingMatchId) {
+      const fresh = state.matches.find(
+        (m) => !seenMatchesRef.current!.has(m.titleId) && Date.now() - m.matchedAt < 120_000
+      );
+      if (fresh) setPendingMatchId(fresh.titleId);
+    }
+    seenMatchesRef.current = current;
+  }, [state.matches, pendingMatchId]);
 
   const isSaved = useCallback((id: string) => state.watchlist.some((w) => w.titleId === id), [state.watchlist]);
   const isMatched = useCallback((id: string) => state.matches.some((m) => m.titleId === id), [state.matches]);
@@ -504,6 +565,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (ids && sb) {
         push.save(sb, ids, id);
         push.notify(sb, ids, "watchlisted", `${meUser().name} saved ${title?.title} for you both`, id);
+        push.activity(sb, ids, "saved", `saved ${title?.title}`, id);
       }
     },
     [clock, sb]
@@ -529,6 +591,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (ids && sb) {
         push.status(sb, ids, id, s);
         if (s === "watching") push.notify(sb, ids, "started", `${meUser().name} just started ${title?.title}`, id);
+        push.activity(
+          sb, ids,
+          s === "finished" ? "finished" : "status",
+          s === "finished" ? `finished ${title?.title}` : `set ${title?.title} to ${s}`,
+          id
+        );
       }
     },
     [clock, sb]
@@ -537,7 +605,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (id: string, score: number) => {
       dispatch({ type: "rate", titleId: id, score, at: clock() });
       const ids = liveRef.current;
-      if (ids && sb) push.watched(sb, ids, id, "me", score);
+      if (ids && sb) {
+        push.watched(sb, ids, id, "me", score);
+        push.activity(sb, ids, "rated", `rated ${getTitle(id)?.title} ${score}/10`, id);
+      }
     },
     [clock, sb]
   );
@@ -545,7 +616,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (id: string, w: Watcher) => {
       dispatch({ type: "watched", rec: { titleId: id, watcher: w, createdAt: clock() } });
       const ids = liveRef.current;
-      if (ids && sb) push.watched(sb, ids, id, w);
+      if (ids && sb) {
+        push.watched(sb, ids, id, w);
+        if (w === "me") push.activity(sb, ids, "finished", `watched ${getTitle(id)?.title}`, id);
+      }
     },
     [clock, sb]
   );
@@ -562,7 +636,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (w === "me") dispatch({ type: "rate", titleId: id, score, at: clock() });
       else dispatch({ type: "watched", rec: { titleId: id, watcher: w, rating: score, createdAt: clock() } });
       const ids = liveRef.current;
-      if (ids && sb) push.watched(sb, ids, id, w, score);
+      if (ids && sb) {
+        push.watched(sb, ids, id, w, score);
+        if (w === "me") push.activity(sb, ids, "rated", `rated ${getTitle(id)?.title} ${score}/10`, id);
+      }
     },
     [clock, sb]
   );
@@ -575,7 +652,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "cinema", titleId: id, cinema: next, at, notifs: [] });
       if (ids && sb) {
         push.cinema(sb, ids, id, next);
-        if (next) push.notify(sb, ids, "cinema", `${meUser().name} wants to see ${title?.title} in cinemas 🎬`, id);
+        if (next) {
+          push.notify(sb, ids, "cinema", `${meUser().name} wants to see ${title?.title} in cinemas 🎬`, id);
+          push.activity(sb, ids, "status", `wants ${title?.title} in cinema 🎬`, id);
+        }
       }
     },
     [clock, isCinema, sb]
@@ -593,6 +673,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (ids && sb) {
         push.note(sb, ids, id, text);
         push.notify(sb, ids, "note", `${meUser().name} left a note on ${title?.title}`, id);
+        push.activity(sb, ids, "note", `left a note on ${title?.title}`, id);
       }
     },
     [clock, sb]
@@ -615,8 +696,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         type: "startParty", titleId: id, at,
         notifs: ids ? [] : [mkNotif(at, "started", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id)],
       });
+      // starting the planned movie within the window completes the plan
+      const due = plansRef.current.find(
+        (p) => p.titleId === id && p.status === "planned" && Math.abs(Date.now() - p.scheduledAt) < 3 * 3600_000
+      );
+      if (due) {
+        dispatch({ type: "planStatus", planId: due.id, status: "done" });
+        if (sb && ids && due.id.includes("-")) push.setPlanStatus(sb, due.id, "done");
+      }
       if (ids && sb) {
         push.notify(sb, ids, "started", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id);
+        push.activity(sb, ids, "party", `started a watch-along of ${title?.title} 🍿`, id);
         push.startSession(sb, ids, id).then((sid) => {
           if (!sid) return;
           // if the session was already cancelled before its id landed, close the
@@ -643,6 +733,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // session id hasn't landed yet (raced start).
       if (sid) void push.setSessionStatus(sb, sid, status);
       else push.endSession(sb, ids);
+      push.activity(
+        sb, ids, "party",
+        status === "completed" ? "finished a watch-along together 🎉" : "wrapped up a watch-along"
+      );
     }
   }, [sb]);
   const listPartyHistory = useCallback(async (): Promise<WatchPartyRecord[]> => {
@@ -663,6 +757,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return [];
     }
   }, [sb]);
+  const planWatchNight = useCallback(
+    (titleId: string, at: number) => {
+      const t = getTitle(titleId);
+      const ids = liveRef.current;
+      dispatch({
+        type: "planAdd",
+        plan: { id: "plan" + clock(), titleId, plannedBy: "me", scheduledAt: at, status: "planned", createdAt: clock() },
+      });
+      if (ids && sb) {
+        const when = new Date(at).toLocaleString(undefined, {
+          weekday: "short", hour: "2-digit", minute: "2-digit",
+        });
+        push.plan(sb, ids, titleId, new Date(at).toISOString());
+        push.notify(sb, ids, "plan", `${meUser().name} planned ${t?.title} for ${when} 📅`, titleId);
+        push.activity(sb, ids, "plan", `planned ${t?.title} for ${when} 📅`, titleId);
+      }
+    },
+    [clock, sb]
+  );
+  const cancelPlan = useCallback(
+    (planId: string) => {
+      dispatch({ type: "planRemove", planId });
+      const ids = liveRef.current;
+      // optimistic local ids ("plan<clock>") have no server row yet; uuids do
+      if (ids && sb && planId.includes("-")) push.cancelPlan(sb, planId);
+    },
+    [sb]
+  );
   const deleteParty = useCallback(async (sessionId: string) => {
     const ids = liveRef.current;
     if (!ids || !sb) return;
@@ -713,12 +835,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       // ---- LIVE: write my real vote; form a match only if Hermi already liked it ----
       if (liveIdsNow && sb) {
-        dispatch({ type: "vote", vote: myVoteObj, activity: [], notifs: [] });
-        if (positive && title) push.notify(sb, liveIdsNow, "favorited", `${meUser().name} liked ${title.title}`, id);
+        const liveActivity: ActivityEvent[] = positive
+          ? [{
+              id: "evv" + at, actorId: ME.id, type: "voted", titleId: id,
+              detail: `${value === "love" ? "loved" : "liked"} ${title?.title}`, createdAt: at,
+            }]
+          : [];
+        dispatch({ type: "vote", vote: myVoteObj, activity: liveActivity, notifs: [] });
+        if (positive && title) {
+          push.notify(sb, liveIdsNow, "favorited", `${meUser().name} liked ${title.title}`, id);
+          push.activity(sb, liveIdsNow, "voted", `${value === "love" ? "loved" : "liked"} ${title.title}`, id);
+        }
         pushVoteAndMaybeMatch(sb, liveIdsNow, id, value).then((matched) => {
           if (matched) {
             setPendingMatchId(matched);
             push.notify(sb, liveIdsNow, "matched", `It's a match on ${title?.title}! 💞`, id);
+            push.activity(sb, liveIdsNow, "matched", `matched with you on ${title?.title} 💞`, id);
           }
         }).catch(() => {});
         return false;
@@ -829,6 +961,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       listPartyHistory,
       partyConversation,
       deleteParty,
+      planWatchNight,
+      cancelPlan,
       iStarted: startedThisMountRef.current,
       sendReaction,
       vote,
@@ -839,7 +973,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
       rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
       joinWatchParty, endWatchParty, listPartyHistory, partyConversation, deleteParty,
-      sendReaction, vote, askAi,
+      planWatchNight, cancelPlan, sendReaction, vote, askAi,
     ]
   );
 
