@@ -39,13 +39,21 @@ Hard-won regression caught in testing: subscribing realtime to not-yet-migrated 
 kills the WHOLE channel; new tables (activity, watch_plans) now ride a separate channel
 so pre-0006 realtime stays alive.
 
-**PANDA MUST DO:**
-1. Apply `supabase/migrations/0006_activity_plans.sql` in the Supabase SQL editor.
-   Until then: activity feed and plans don't sync cross-device (everything else works).
-2. After the deploy is live: Profile > "Turn on alerts" on BOTH phones (the enable flow
-   is fixed; it will now say exactly what is wrong if anything still blocks it).
+**Status 2026-07-12 (end of session):** Migration 0006 APPLIED by Panda and verified
+against the live DB (activity + watch_plans tables both responding; activity already has
+real rows). Panda confirmed the app "works nice" in testing. Deploy amore-v5 verified
+live; GET /api/push serves the runtime key (configured).
+Only remaining device step (if not already done): Profile > "Turn on alerts" on BOTH
+phones. The rebuilt flow reports the exact blocker if anything fails; a granted-but-
+half-enrolled device self-heals on the next app open.
 E2E residue: test votes on Paddington (both liked it, it's now a match) + a few test
 nudge/plan notifications. The Shoplifters watch-along test records were deleted.
+
+## Next session candidates (nothing in flight)
+- Confirm push end-to-end on the real phones (nudge with the app closed).
+- Us activity feed polish if wanted (icons per type, day grouping).
+- Deferred: synced playback position, provider deep links, Cloudflare-proxied custom
+  domain for Panda's ISP route (approved concept, unbuilt).
 
 ## Current phase (2026-07-11): Phase 10 "Watch-along that remembers" SHIPPED, 1 manual step
 Watch-alongs are now durable, resumable records instead of ephemeral overlays:
