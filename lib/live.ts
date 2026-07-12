@@ -470,22 +470,32 @@ export async function fetchSessionReactions(
 
 const COUPLE_TABLES = [
   "watchlist", "votes", "matches", "watched", "notes", "notifications",
-  "watch_sessions", "reactions", "ai_messages", "activity", "watch_plans",
+  "watch_sessions", "reactions", "ai_messages",
 ];
+// Newer tables ride a SEPARATE channel: if migration 0006 is not applied yet,
+// their postgres_changes join fails and would otherwise take the WHOLE core
+// channel down with it (learned the hard way in regression testing).
+const EXTRA_TABLES = ["activity", "watch_plans"];
 
 export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: () => void): () => void {
-  const ch = sb.channel(`couple-changes:${ids.couple}`);
   // every couple-scoped table (reactions now carries couple_id too) is filtered
   // to this couple, so another couple's activity never triggers a refetch storm.
-  for (const table of COUPLE_TABLES) {
-    ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, () => {
-      if (isSelfEcho(table)) return;
-      onChange();
-    });
-  }
-  ch.subscribe();
+  const wire = (name: string, tables: string[]) => {
+    const ch = sb.channel(`${name}:${ids.couple}`);
+    for (const table of tables) {
+      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, () => {
+        if (isSelfEcho(table)) return;
+        onChange();
+      });
+    }
+    ch.subscribe();
+    return ch;
+  };
+  const core = wire("couple-changes", COUPLE_TABLES);
+  const extras = wire("couple-extras", EXTRA_TABLES); // may fail pre-0006; core unaffected
   return () => {
-    sb.removeChannel(ch);
+    sb.removeChannel(core);
+    sb.removeChannel(extras);
   };
 }
 
