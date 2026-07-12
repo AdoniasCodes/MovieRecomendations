@@ -1,6 +1,51 @@
 # handoff.md — Amore Movies
 
-_Updated: 2026-07-11_
+_Updated: 2026-07-12_
+
+## Current phase (2026-07-12): Phase 11 "The Smooth Update" SHIPPED, 2 manual steps
+Planned + approved by Panda, built by orchestrated subagents (Haiku/Sonnet/Opus under
+Fable as architect and final judge), fully E2E-tested (probe11/12 master suite, probe8/9
+regressions, After Dark 2000-game sim: 0 violations).
+
+Bug fixes (root causes confirmed by recon + live diagnostics):
+1. **Splash on every tab (CRITICAL)**: the v4 SW cached RSC payloads/app shell
+   cache-first; after a deploy the stale build made Next hard-reload every nav into the
+   stale cache. sw.js is now amore-v5: navigations network-first (2.5s cache fallback),
+   only /_next/static + media cache-first, RSC/dynamic never cached. Latent bug fixed:
+   missing last-activity stamp treated as "now", never as idle-forever.
+2. **Soft welcome gate**: signed-in known identity + activity under 1h enters directly
+   (no splash, no picker). Neutral black screen while auth resolves; 5s escape hatch kept.
+3. **Push notifications never worked**: the deployed bundle had NO VAPID public key
+   (Netlify env scoped to functions, not builds; verified by grepping live chunks) so 0
+   devices ever subscribed (0 rows, verified). Key now served at runtime via GET
+   /api/push; requestPermission first-in-gesture (iOS); EnableAlerts reflects the real
+   subscription row, always retryable, per-cause blocking modals; self-healing refresh.
+4. **Us activity feed synced**: new `activity` table (migration 0006) mirrored from every
+   couple action; survives refetch; feed works in live mode.
+5. **Match overlay for BOTH**: fresh-match diff on hydrate celebrates on the partner's
+   device too (freshness-gated, no misfire on boot).
+6. **Swipe deck**: promoted cards restore opacity 1 (framer kept 0.7-0.85) + solid card
+   bg; era chips restyled high-contrast glass (were near-invisible on OLED).
+
+Features: watch night planning (PlanPicker in TitleSheet, UpcomingPlans on Tonight,
+cancel with blocking confirm, Start-now in the window, one-time reminder push via atomic
+reminded_at claim), learning taste engine (learnedTaste() blends real votes/ratings into
+scoring, n/(n+20) damped), offline write queue (idempotent mirrors park in
+localStorage, FIFO replay on reconnect/foreground), After Dark trio (sealed envelope
+draws with 2s both-hold reveal, cosmetic rarity 28 rare/6 legendary with foil styling,
+persistent "Your story so far" recap stats).
+
+Hard-won regression caught in testing: subscribing realtime to not-yet-migrated tables
+kills the WHOLE channel; new tables (activity, watch_plans) now ride a separate channel
+so pre-0006 realtime stays alive.
+
+**PANDA MUST DO:**
+1. Apply `supabase/migrations/0006_activity_plans.sql` in the Supabase SQL editor.
+   Until then: activity feed and plans don't sync cross-device (everything else works).
+2. After the deploy is live: Profile > "Turn on alerts" on BOTH phones (the enable flow
+   is fixed; it will now say exactly what is wrong if anything still blocks it).
+E2E residue: test votes on Paddington (both liked it, it's now a match) + a few test
+nudge/plan notifications. The Shoplifters watch-along test records were deleted.
 
 ## Current phase (2026-07-11): Phase 10 "Watch-along that remembers" SHIPPED, 1 manual step
 Watch-alongs are now durable, resumable records instead of ephemeral overlays:

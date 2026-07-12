@@ -197,6 +197,21 @@ playwright cache (`~/Library/Caches/ms-playwright/chromium-*/...`). Pattern (see
 - Leave the couple's data as found (toggle back what you toggled; nudges are acceptable
   residue but tell Panda).
 
+## §8c. Realtime + service worker hard rules (regressions that actually happened)
+- **Never subscribe a realtime channel to a table that may not exist yet.** If any
+  postgres_changes binding fails (table missing pre-migration), the WHOLE channel dies
+  and every other table on it goes silent. New tables get their own channel (see
+  subscribeCoupleChanges: COUPLE_TABLES vs EXTRA_TABLES) until their migration is a
+  given.
+- **Never cache Next.js RSC payloads or the app shell cache-first in the SW.** After a
+  deploy the stale build makes the router hard-reload every navigation into the same
+  stale cache (the splash-on-every-tab bug). Contract: navigations network-first with a
+  short cache fallback; cache-first ONLY for /_next/static + media; `_rsc` and other
+  dynamic GETs are never touched.
+- **NEXT_PUBLIC_ env vars are build-time.** On Netlify, an env var scoped to Functions
+  never reaches the client bundle. Anything the client needs that the server also knows
+  (like the VAPID public key) should be served from an API route at runtime instead.
+
 ## §6. Verifying a Netlify deploy (no dashboard access needed)
 GitHub commit statuses/check-runs stay empty for this repo (Netlify not wired as a GitHub check)
 and no Netlify CLI auth exists locally. After pushing to main, wait 2-4 min then:

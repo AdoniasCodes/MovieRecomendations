@@ -312,6 +312,22 @@ external store OUTSIDE the store seam, because store hydration replaces state wh
 on every realtime refetch and must not reset what this device has open. Migration 0005
 adds watch_sessions.status; all writes fall back gracefully until it is applied.
 
+## 5i. Phase 11 — "The Smooth Update" (SHIPPED 2026-07-12)
+
+Plan-approved orchestrated iteration (multi-agent: Haiku cosmetics, Sonnet plan UI,
+Opus x2 for After Dark + learning engine, Fable architect/judge). Fixed at root cause:
+splash-on-every-tab (v4 SW cached RSC/shell cache-first; v5 caches only immutables,
+navigations network-first), soft welcome gate (fresh session + <1h activity enters
+directly), phone push (VAPID key was never in the client bundle; now served at runtime
+by GET /api/push, enable flow rebuilt for iOS gesture rules + subscription-truth UI),
+synced activity feed (activity table, 0006), match overlay on both devices, deck
+opacity + era chip contrast. New: watch night planning (watch_plans table, PlanPicker,
+UpcomingPlans, atomic one-shot reminder), learning taste engine (RecOptions.learned,
+damped n/(n+20)), offline write queue (lib/write-queue.ts + queuedMirror in live.ts),
+After Dark envelopes/rarity/persistent stats. Critical lesson recorded in
+instructions.md §8c: realtime channels die wholesale if ANY subscribed table is
+missing; new tables must ride a separate channel until their migration is applied.
+
 ## 6. Deferred (later)
 - Push notifications (web-push) once PWA is installed + a backend exists to send them.
 - Richer watch-along (synced playback position, video provider deep-links).
