@@ -509,6 +509,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [live, ready]);
 
+  // PLAN REMINDER (no cron): inside the reminder window the first device to
+  // atomically claim reminded_at sends the web push + notification to the
+  // partner. The claim is a conditional update, so it fires once ever per plan.
+  useEffect(() => {
+    if (!live || !sb || !liveIds) return;
+    const ids = liveIds;
+    const check = () => {
+      const nowMs = Date.now();
+      for (const p of plansRef.current) {
+        if (p.status !== "planned" || p.remindedAt) continue;
+        if (!p.id.includes("-")) continue; // optimistic local id: row not synced yet
+        if (nowMs < p.scheduledAt - 15 * 60_000 || nowMs > p.scheduledAt + 2 * 3600_000) continue;
+        push
+          .claimReminder(sb, p.id)
+          .then((won) => {
+            if (!won) return;
+            const t = getTitle(p.titleId);
+            push.notify(sb, ids, "plan", `Movie night: ${t?.title ?? "your pick"} is on 🍿`, p.titleId);
+          })
+          .catch(() => {});
+      }
+    };
+    check();
+    const iv = setInterval(check, 60_000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, sb, liveIds?.couple, liveIds?.my, liveIds?.her]);
+
   // MATCH FOR BOTH: when a fresh match row arrives via refetch (the partner
   // completed it on their device), celebrate here too. Freshness-gated so
   // hydrating historical matches at boot can never fire it; a match formed in
