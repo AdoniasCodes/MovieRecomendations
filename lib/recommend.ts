@@ -5,7 +5,7 @@ import {
   TITLES,
   getTitle,
 } from "./mock-data";
-import type { QuizAnswers, Scored, Title, Vibe } from "./types";
+import type { QuizAnswers, Scored, Title, Vibe, Vote, Watcher, WatchedRecord } from "./types";
 
 // ---- audience -------------------------------------------------------------
 // Who are we recommending for? "me" = Panda (anything goes), "her" = Amore
@@ -29,19 +29,33 @@ const W_HER = buildWeights(TASTE_AMORE);
 const SEEDS_ME = TASTE_PANDA.lovedTitleIds.map(getTitle).filter(Boolean) as Title[];
 const SEEDS_HER = TASTE_AMORE.lovedTitleIds.map(getTitle).filter(Boolean) as Title[];
 
-function genreAffinity(t: Title, aud: Audience): number {
-  const pick = (w: Map<string, number>) => {
+function genreAffinity(t: Title, aud: Audience, learned?: LearnedTastes): number {
+  // learned per-genre weight for each person (0 when we've learned nothing yet)
+  const lme = (g: string) => learned?.me.genreWeights[g] ?? 0;
+  const lher = (g: string) => learned?.her.genreWeights[g] ?? 0;
+  const both = (g: string) => (lme(g) + lher(g)) / 2; // "together" averages both
+  const pick = (w: Map<string, number>, lw: (g: string) => number) => {
     let s = 0;
-    for (const g of t.genres) s += w.get(g) ?? 0;
+    for (const g of t.genres) s += (w.get(g) ?? 0) + lw(g);
     return Math.min(s / 4, 1);
   };
-  if (aud === "me") return pick(W_ME);
-  if (aud === "her") return pick(W_HER);
-  return (pick(W_ME) + pick(W_HER)) / 2;
+  if (aud === "me") return pick(W_ME, lme);
+  if (aud === "her") return pick(W_HER, lher);
+  return (pick(W_ME, both) + pick(W_HER, both)) / 2;
 }
 
-function seedAnchor(t: Title, aud: Audience): Title | undefined {
-  const pool = aud === "her" ? SEEDS_HER : aud === "me" ? SEEDS_ME : [...SEEDS_HER, ...SEEDS_ME];
+function seedAnchor(t: Title, aud: Audience, learned?: LearnedTastes): Title | undefined {
+  // learned recent loves lead the pool so "Because you loved X" can cite a real,
+  // recent favorite before falling back to the static seed anchors.
+  const resolve = (ids: string[]) => ids.map(getTitle).filter(Boolean) as Title[];
+  const learnedMe = learned ? resolve(learned.me.lovedIds) : [];
+  const learnedHer = learned ? resolve(learned.her.lovedIds) : [];
+  const pool =
+    aud === "her"
+      ? [...learnedHer, ...SEEDS_HER]
+      : aud === "me"
+      ? [...learnedMe, ...SEEDS_ME]
+      : [...learnedHer, ...learnedMe, ...SEEDS_HER, ...SEEDS_ME];
   return pool.find((s) => s.id !== t.id && s.genres.some((g) => t.genres.includes(g)));
 }
 
@@ -121,6 +135,76 @@ function passesHardFilters(t: Title, aud: Audience, commitment?: QuizAnswers["co
   return true;
 }
 
+// ---- learned taste (light behavioral layer) -------------------------------
+// Derives a small per-person genre bias + recent-love anchors from real votes
+// and ratings. Pure: no store/React imports; the store feeds it the raw arrays.
+
+/** how far a fully-confident learned genre bias can move the effective weight */
+const MAX_LEARNED = 1.5;
+
+export interface LearnedTaste {
+  /** genre -> learned bias in roughly [-MAX_LEARNED, MAX_LEARNED] */
+  genreWeights: Record<string, number>;
+  /** recent real loves (love votes / 9+ ratings), newest first, capped */
+  lovedIds: string[];
+}
+export interface LearnedTastes {
+  me: LearnedTaste;
+  her: LearnedTaste;
+}
+
+export function learnedTaste(
+  votes: Vote[],
+  watched: WatchedRecord[],
+  get: (id: string) => Title | undefined = getTitle
+): LearnedTastes {
+  const build = (person: Watcher): LearnedTaste => {
+    const raw = new Map<string, number>();
+    const loved: { id: string; at: number }[] = [];
+    let signals = 0;
+
+    const bump = (id: string, delta: number) => {
+      const t = get(id);
+      if (!t) return; // unresolved title contributes nothing (and isn't a signal)
+      signals += 1;
+      if (delta !== 0) for (const g of t.genres) raw.set(g, (raw.get(g) ?? 0) + delta);
+    };
+
+    for (const v of votes) {
+      if (v.userId !== person) continue;
+      const delta = v.value === "love" ? 2 : v.value === "like" ? 1 : v.value === "pass" ? -1 : 0;
+      bump(v.titleId, delta);
+      if (v.value === "love") loved.push({ id: v.titleId, at: v.createdAt });
+    }
+    for (const w of watched) {
+      if (w.watcher !== person) continue;
+      const delta = w.rating == null ? 0 : w.rating >= 8 ? 2 : w.rating <= 4 ? -1 : 0;
+      bump(w.titleId, delta);
+      if (w.rating != null && w.rating >= 9) loved.push({ id: w.titleId, at: w.createdAt });
+    }
+
+    const genreWeights: Record<string, number> = {};
+    if (signals > 0) {
+      let maxAbs = 0;
+      for (const val of raw.values()) maxAbs = Math.max(maxAbs, Math.abs(val));
+      if (maxAbs > 0) {
+        const f = signals / (signals + 20); // confidence damping toward 1
+        for (const [g, val] of raw) genreWeights[g] = f * (val / maxAbs) * MAX_LEARNED;
+      }
+    }
+
+    const lovedIds = loved
+      .sort((a, b) => b.at - a.at)
+      .map((x) => x.id)
+      .filter((id, i, arr) => arr.indexOf(id) === i) // dedupe, keep most recent
+      .slice(0, 12);
+
+    return { genreWeights, lovedIds };
+  };
+
+  return { me: build("me"), her: build("her") };
+}
+
 // ---- scoring -------------------------------------------------------------
 
 export interface RecOptions {
@@ -131,11 +215,13 @@ export interface RecOptions {
   similarTo?: string;
   /** override the audience (otherwise derived from QuizAnswers.context) */
   audience?: Audience;
+  /** learned per-person taste from real votes/ratings (optional; off by default) */
+  learned?: LearnedTastes;
 }
 
 export function scoreTitle(t: Title, a: QuizAnswers, opts: RecOptions = {}): Scored {
   const aud = audienceOf(a, opts);
-  const genre = genreAffinity(t, aud);
+  const genre = genreAffinity(t, aud, opts.learned);
   const vibe = vibeMatch(t, a.vibe);
   const mood = moodFit(t, a);
   const era = eraFit(t, a.era);
@@ -206,7 +292,7 @@ function explain(
   } else if (aud === "together" && t.violence <= 2 && t.cerebral) {
     bits.push("Low on blood, high on brains. A clean fit for you both.");
   } else {
-    const anchor = seedAnchor(t, aud);
+    const anchor = seedAnchor(t, aud, opts.learned);
     if (parts.genre > 0.45 && anchor) {
       bits.push(`Because you loved ${anchor.title}, this ${t.genres[0].toLowerCase()} pick is right in your lane.`);
     } else if (opts.similarTo) {
@@ -241,25 +327,25 @@ export function recommend(a: QuizAnswers, opts: RecOptions = {}, limit = 20): Sc
 
 const DEFAULT_ANSWERS: QuizAnswers = { context: "together", era: "any" };
 
-export function tonightsPick(excludeIds?: Set<string>): Scored {
+export function tonightsPick(excludeIds?: Set<string>, learned?: LearnedTastes): Scored {
   // couple pick: no forced vibe, let the audience-aware blend surface a shared winner
-  return recommend({ ...DEFAULT_ANSWERS, energy: "full-attention" }, { excludeIds })[0];
+  return recommend({ ...DEFAULT_ANSWERS, energy: "full-attention" }, { excludeIds, learned })[0];
 }
 
-export function surpriseMe(excludeIds?: Set<string>): Scored {
-  const list = recommend(DEFAULT_ANSWERS, { excludeIds }, 12);
+export function surpriseMe(excludeIds?: Set<string>, learned?: LearnedTastes): Scored {
+  const list = recommend(DEFAULT_ANSWERS, { excludeIds, learned }, 12);
   const i = Math.floor(Math.pow(pseudo(), 1.6) * list.length);
   return list[Math.min(i, list.length - 1)];
 }
 
-export function hiddenGems(limit = 8): Scored[] {
-  return recommend(DEFAULT_ANSWERS, { preferHiddenGems: true }, 40)
+export function hiddenGems(limit = 8, learned?: LearnedTastes): Scored[] {
+  return recommend(DEFAULT_ANSWERS, { preferHiddenGems: true, learned }, 40)
     .filter((s) => s.title.hiddenGem || s.title.popularity < 72)
     .slice(0, limit);
 }
 
-export function classics(limit = 8): Scored[] {
-  return recommend(DEFAULT_ANSWERS, { preferClassics: true }, 40)
+export function classics(limit = 8, learned?: LearnedTastes): Scored[] {
+  return recommend(DEFAULT_ANSWERS, { preferClassics: true, learned }, 40)
     .filter((s) => s.title.classic)
     .slice(0, limit);
 }

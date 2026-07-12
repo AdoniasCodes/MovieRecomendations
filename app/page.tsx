@@ -1,5 +1,6 @@
 "use client";
 
+import { UpcomingPlans } from "@/components/plan/UpcomingPlan";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { tonightCatalog } from "@/lib/catalog";
 import { cn } from "@/lib/cn";
@@ -54,9 +55,9 @@ export default function HomePage() {
 
   const curated = useMemo(() => {
     reseed(1337 + pickSeed * 17);
-    return pickSeed % 2 === 1 ? surpriseMe(excluded) : tonightsPick(excluded);
+    return pickSeed % 2 === 1 ? surpriseMe(excluded, store.learned) : tonightsPick(excluded, store.learned);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickSeed, excluded]);
+  }, [pickSeed, excluded, store.learned]);
 
   // the live pool (minus anything finished) drives the carousel; fall back to
   // the curated engine until the pool loads.
@@ -70,8 +71,8 @@ export default function HomePage() {
       ? setIdx((i) => i + 1 + Math.floor(Math.random() * Math.max(1, poolView.length - 1)))
       : setPickSeed((s) => s + 1);
 
-  const gems = useMemo(() => hiddenGems(8), []);
-  const classicPicks = useMemo(() => classics(8), []);
+  const gems = useMemo(() => hiddenGems(8, store.learned), [store.learned]);
+  const classicPicks = useMemo(() => classics(8, store.learned), [store.learned]);
   const matchTitles = store.matches.map((m) => getTitle(m.titleId)).filter(Boolean) as Title[];
   const continueWatching = store.watchlist
     .filter((w) => w.status === "watching" || w.status === "paused")
@@ -86,6 +87,9 @@ export default function HomePage() {
 
       {/* Tonight's Pick hero */}
       <TonightHero pick={pick} onReshuffle={nextPick} />
+
+      {/* planned watch nights */}
+      <UpcomingPlans />
 
       {/* quick actions */}
       <div className="grid grid-cols-3 gap-2.5">

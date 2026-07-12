@@ -26,11 +26,12 @@ export default function DiscoverPage() {
         excludeIds: seen,
         preferHiddenGems: a.vibe === "mysterious" || a.feeling === "curious",
         preferClassics: a.era === "70s" || a.era === "80s" || a.era === "90s",
+        learned: store.learned,
       });
       setCards(recs);
       setPhase("deck");
     },
-    [store.votes, store.me.id]
+    [store.votes, store.me.id, store.learned]
   );
 
   const tabs = (

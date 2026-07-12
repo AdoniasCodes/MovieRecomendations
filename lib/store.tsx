@@ -23,6 +23,7 @@ import {
   trackPresence,
 } from "./live";
 import { getWhoami, meUser, partnerUser, useWhoami } from "./identity";
+import { learnedTaste, type LearnedTastes } from "./recommend";
 import { dismissSession } from "./session-prefs";
 import { ME, PARTNER, getTitle, pinTitles } from "./mock-data";
 import { getSupabase } from "./supabase";
@@ -331,6 +332,8 @@ interface StoreCtx extends State {
   ready: boolean;
   /** true when signed in AND paired — data is synced via Supabase, not simulated */
   live: boolean;
+  /** light learned taste (per person) derived from real votes + ratings */
+  learned: LearnedTastes;
   pendingMatch: Title | null;
   unreadCount: number;
   clearMatch: () => void;
@@ -582,6 +585,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const unreadCount = useMemo(
     () => state.notifications.filter((n) => n.toId === ME.id && !n.read).length,
     [state.notifications]
+  );
+  const learned = useMemo(
+    () => learnedTaste(state.votes, state.watched),
+    [state.votes, state.watched]
   );
 
   const save = useCallback(
@@ -960,6 +967,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       partner: partnerUser(),
       ready,
       live,
+      learned,
       pendingMatch: pendingMatchId ? getTitle(pendingMatchId) ?? null : null,
       unreadCount,
       clearMatch: () => setPendingMatchId(null),
@@ -997,7 +1005,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       askAi,
     }),
     [
-      who, state, ready, live, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
+      who, state, ready, live, learned, pendingMatchId, unreadCount, isSaved, myVote, isMatched, isCinema, watchersOf,
       watchedRecord, notesFor, save, unsave, toggleSave, setStatus, rate, markWatched, unwatch,
       rateAs, toggleCinema, addNote, deleteNote, nudge, markNotifsRead, startWatchParty,
       joinWatchParty, endWatchParty, listPartyHistory, partyConversation, deleteParty,

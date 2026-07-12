@@ -76,6 +76,11 @@ export interface Card {
   weight?: number;
   /** "wild" cards get special styling. */
   wild?: boolean;
+  /**
+   * Cosmetic rarity tier. Purely presentational: draw() and the weighting
+   * MUST NOT read this. Unset is treated as "common".
+   */
+  rarity?: "common" | "rare" | "legendary";
 }
 
 export const SKIPS_PER_PLAYER = 3;

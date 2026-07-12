@@ -95,7 +95,7 @@ export function SwipeDeck({
                 initial={false}
                 animate={
                   isTop
-                    ? { scale: 1, y: 0 }
+                    ? { scale: 1, y: 0, opacity: 1 }
                     : { scale: 1 - i * 0.05, y: i * 14, opacity: 1 - i * 0.15 }
                 }
                 drag={isTop ? "x" : false}
@@ -104,7 +104,7 @@ export function SwipeDeck({
                 onDragEnd={isTop ? onDragEnd : undefined}
                 whileTap={isTop ? { cursor: "grabbing" } : undefined}
               >
-                <div className="relative h-full overflow-hidden rounded-3xl shadow-card">
+                <div className="relative h-full overflow-hidden rounded-3xl shadow-card bg-[#101014]">
                   <Poster title={card.title} showMeta={false} rounded="rounded-3xl" className="h-full" />
 
                   {/* like / pass stamps */}

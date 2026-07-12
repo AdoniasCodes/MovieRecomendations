@@ -125,7 +125,7 @@ export function MoodQuiz({ onDone }: { onDone: (a: QuizAnswers) => void }) {
                 <button
                   key={e.value}
                   onClick={() => pick({ era: e.value })}
-                  className="chip px-5 py-3 text-base hover:bg-white/[0.08]"
+                  className="glass rounded-2xl px-5 py-3 text-base font-semibold text-white transition hover:bg-white/[0.1] active:scale-95"
                 >
                   {e.label}
                 </button>

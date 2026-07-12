@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
+import { PlanPicker } from "@/components/plan/PlanPicker";
 import { cn } from "@/lib/cn";
 import { getTitle } from "@/lib/mock-data";
 import { scoreTitle } from "@/lib/recommend";
@@ -11,7 +12,7 @@ import { closeTitleSheet, openTitleSheet, useOpenTitleId } from "@/lib/title-she
 import type { Watcher, WatchStatus } from "@/lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bell, Bookmark, Check, Clapperboard, Eye, MessageCirclePlus, PlayCircle, Sparkles, Star,
+  Bell, Bookmark, Calendar, Check, Clapperboard, Eye, MessageCirclePlus, PlayCircle, Sparkles, Star,
   ThumbsDown, ThumbsUp, Wand2, X,
 } from "lucide-react";
 import { useState } from "react";
@@ -64,12 +65,13 @@ function Body({ titleId }: { titleId: string }) {
   const watchers = store.watchersOf(t.id);
   const herRecord = store.watchedRecord(t.id, "her");
   const notes = store.notesFor(t.id);
-  const why = scoreTitle(t, { context: "together", era: "any", vibe: t.vibes[0] }).why;
+  const why = scoreTitle(t, { context: "together", era: "any", vibe: t.vibes[0] }, { learned: store.learned }).why;
 
   const [aud, setAud] = useState<Audience>("together");
   const [sim, setSim] = useState<AIResult | null>(null);
   const [simLoading, setSimLoading] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [planOpen, setPlanOpen] = useState(false);
 
   async function loadSimilar(audience: Audience) {
     setSimLoading(true);
@@ -180,16 +182,26 @@ function Body({ titleId }: { titleId: string }) {
           />
         </div>
 
-        {/* watch together */}
-        <button
-          onClick={() => {
-            store.startWatchParty(t.id);
-            closeTitleSheet();
-          }}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-gradient py-3 text-sm font-bold shadow-glow active:scale-[0.98]"
-        >
-          <PlayCircle className="h-5 w-5" /> Start watch-along with {store.partner.name}
-        </button>
+        {/* watch together / plan a night */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => {
+              store.startWatchParty(t.id);
+              closeTitleSheet();
+            }}
+            className="flex items-center justify-center gap-2 rounded-2xl bg-accent-gradient py-3 text-center text-sm font-bold leading-tight shadow-glow active:scale-[0.98]"
+          >
+            <PlayCircle className="h-5 w-5 shrink-0" /> Start watch-along with {store.partner.name}
+          </button>
+          <button
+            onClick={() => setPlanOpen(true)}
+            className="glass flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold active:scale-[0.98]"
+          >
+            <Calendar className="h-5 w-5" /> Plan a night 📅
+          </button>
+        </div>
+
+        {planOpen && <PlanPicker titleId={t.id} onClose={() => setPlanOpen(false)} />}
 
         {/* watched by */}
         <div>
