@@ -20,6 +20,14 @@ Fun project (call the user **Panda**). Couples' movie/series discovery platform 
 ## Run / verify
 `npm run dev` (usually port 3001; confirm via page title). `npm run build` for type-check. NEVER run build while dev is running (shared `.next`).
 
+## Notifications: the follow-along rule (Panda's standing request, 2026-07-24)
+Every action one partner takes that the other would want to know about MUST call
+`push.notify` (which also fires the web push) and, where it fits the Us feed,
+`push.activity`. When adding ANY new couple-visible feature, wire its notification in the
+same commit. Types are free-form text in the DB; extend `NotificationType` + the bell's
+ICON map. Nudges get the full `NudgeOverlay` takeover (bell banner is suppressed for
+them); everything else gets the bell banner + badge.
+
 ## Don't
 - Don't add real API keys to the repo. Use `.env.local` (gitignored).
 - Don't break the `store.tsx` action seam or move uuid handling out of `live.ts`.

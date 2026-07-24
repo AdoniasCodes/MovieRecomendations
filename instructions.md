@@ -218,6 +218,14 @@ and no Netlify CLI auth exists locally. After pushing to main, wait 2-4 min then
 `curl -s -o /dev/null -w "%{http_code}" https://amoremovies.netlify.app/<route>` (expect 200)
 and grep the HTML for content unique to the new change.
 
+**Client-code changes never show in the HTML — grep the deployed CHUNK JS instead** (proven
+2026-07-25): after `npm run build` locally, find which chunk holds your new string
+(`grep -rl "<unique string>" .next/static/chunks/`), then fetch that same chunk path from the
+live site and grep it. Shared chunks (e.g. `695-*.js` for lib/store.tsx) keep IDENTICAL hashed
+names between local and Netlify builds; the layout chunk hash DIFFERS (env inlining), so for
+layout-bundled components pull the current layout path out of the live HTML first. A free-tier
+deploy can take 10+ min to go live — keep polling the chunk, not the CI (there is none).
+
 **If local curl times out (000), do NOT assume the deploy failed.** Rule out a local/ISP path
 problem first (hit us 2026-07-09: ISP could not reach Netlify's Frankfurt edge while the site
 was 200 worldwide):

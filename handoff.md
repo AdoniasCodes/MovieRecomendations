@@ -1,8 +1,65 @@
 # handoff.md — Amore Movies
 
-_Updated: 2026-07-12_
+_Updated: 2026-07-25_
 
-## Current phase (2026-07-12): Phase 11 "The Smooth Update" SHIPPED, 2 manual steps
+## Current phase (2026-07-24/25): Phase 12 "Notifications actually flow" SHIPPED + DEPLOY VERIFIED
+Panda reported: Hermi's actions never appear in his in-app notification board; wanted a
+nudge graphic; wanted Android push if possible. Live-DB diagnosis (scratchpad probes with
+both PIN accounts) proved the backend was HEALTHY (inserts + realtime fire with the app's
+exact filter) but **Hermi's phone wrote NOTHING to Supabase since Jul 12** (her last real
+write: watchlist add Jul 7; the Jul 12 rows were probe residue).
+
+**ROOT CAUSE (the big one): silent demo-mode trap in lib/auth.tsx.** loadAll raced an 8s
+timeout and swallowed query errors, so a flaky boot left couple=null => live=false =>
+the whole app silently ran demo mode while looking signed-in and normal. The loadedFor
+dedup then marked that user "loaded", so hourly TOKEN_REFRESHED events skipped reloading
+forever. One bad boot = nothing syncs until a full app restart. Fixed:
+1. loadAll returns success/failure; a transient error can no longer read as "unpaired"
+   or clear valid couple state; failed loads clear the dedup key.
+2. Self-heal effect: while session exists but couple/partner unresolved, retry on 4s,
+   every 20s, on `online`, and on foreground.
+3. components/SyncStatus.tsx: unmissable red "Not synced" top strip (tap = refresh) after
+   6s of signed-in-but-not-live. Silent demo mode is now impossible.
+4. lib/live.ts realtime: partner-authored events (payload actor column vs ids.my) ALWAYS
+   refetch, bypassing the 4s self-echo window (a rapid nudge exchange used to be
+   swallowed — caught live by the E2E probe).
+
+**Android push: WAS NEVER BROKEN.** Panda's FCM subscription (sole row in
+push_subscriptions, Jul 12) delivered a live test push sent via POST /api/push
+(sent:1) and Panda confirmed it arrived on his phone. He never got pushes because pushes
+are sent by the PARTNER's app when it mirrors an action — and Hermi's app never mirrored
+(see root cause). **Hermi's phone still needs: one fresh app open (new bundle), then
+Profile > Turn on alerts** (she has 0 push subscriptions).
+
+**Nudge graphics (new):** components/notifications/NudgeOverlay.tsx — full z-[60]
+takeover on a fresh (<2 min) incoming nudge: waving-hand animation, rising hearts,
+poster, strong vibrate, one-tap "Nudge back". Generic bell banner suppressed for nudges.
+Sender side: TitleSheet nudge button flips to "Nudged {name}!" with a heart burst and
+guards double-taps (real double-nudges existed in the DB from Jul 12).
+
+**Notification coverage (Panda's ask: partner follows along on everything):** added
+notify on rate/rateAs (incl. on partner's behalf), finished/paused/dropped status,
+markWatched (both), love => "LOVED X 💖", seen votes, unsave, cancelPlan, watch-along
+wrap-up. New NotificationType "watched" + "party" (DB type column is unconstrained text,
+NO migration needed). Bell ICON map covers plan/ai/watched/party.
+
+E2E: scratchpad probe-nudge.mjs, 10/10 green on local prod build (both users via PIN
+gate; nudge => overlay; nudge-back inside the echo window; sender feedback; auto-dismiss;
+SyncStatus appears when couple_members is blocked and SELF-HEALS when unblocked; healthy
+mode shows no banner; test nudges auto-deleted). Commits 9c79332 + ba2061c pushed to main;
+BOTH VERIFIED LIVE by grepping deployed chunks (layout chunk: "nudged you"/"Not synced";
+chunk 695: "LOVED"/"cancelled the plan"). NOTE: Netlify posts NO GitHub commit status on
+this repo — verify deploys by grepping deployed chunk JS, not CI.
+
+**Next testing session (Panda said more testing/fixing coming):**
+- Hermi's phone: open app fresh (kill + reopen; VPN if her route is bad), watch for the
+  red "Not synced" strip — if it appears and won't clear, that phone's network to
+  Supabase is the problem. Then Profile > Turn on alerts on her phone.
+- Then a real cross-device test: she likes/rates/nudges => Panda's board + push.
+- Residue: Panda's real nudge to Hermi (Reply 1988, Jul 24) left as-is. Test pushes were
+  sent to Panda's phone during E2E (expected).
+
+## Previous phase (2026-07-12): Phase 11 "The Smooth Update" SHIPPED, 2 manual steps
 Planned + approved by Panda, built by orchestrated subagents (Haiku/Sonnet/Opus under
 Fable as architect and final judge), fully E2E-tested (probe11/12 master suite, probe8/9
 regressions, After Dark 2000-game sim: 0 violations).
