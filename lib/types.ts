@@ -137,7 +137,9 @@ export type NotificationType =
   | "nudge"
   | "note"
   | "ai"
-  | "plan";
+  | "plan"
+  | "watched"
+  | "party";
 
 export interface Notification {
   id: string;

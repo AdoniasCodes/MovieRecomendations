@@ -402,6 +402,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   liveRef.current = liveIds;
   const sessionIdRef = useRef<string | undefined>(undefined);
   sessionIdRef.current = state.session?.id;
+  const sessionTitleRef = useRef<string | undefined>(undefined);
+  sessionTitleRef.current = state.session?.titleId;
   const plansRef = useRef<Plan[]>([]);
   plansRef.current = state.plans;
   // stable key for the current session in BOTH modes (demo rows have no db id).
@@ -609,7 +611,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       dispatch({ type: "unsave", titleId: id });
       const ids = liveRef.current;
-      if (ids && sb) push.unsave(sb, ids, id);
+      if (ids && sb) {
+        push.unsave(sb, ids, id);
+        push.notify(sb, ids, "watchlisted", `${meUser().name} took ${getTitle(id)?.title} off your list`, id);
+      }
     },
     [sb]
   );
@@ -626,6 +631,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (ids && sb) {
         push.status(sb, ids, id, s);
         if (s === "watching") push.notify(sb, ids, "started", `${meUser().name} just started ${title?.title}`, id);
+        if (s === "finished") push.notify(sb, ids, "watched", `${meUser().name} finished ${title?.title} 🎉`, id);
+        if (s === "paused") push.notify(sb, ids, "watched", `${meUser().name} paused ${title?.title} ⏸️`, id);
+        if (s === "dropped") push.notify(sb, ids, "watched", `${meUser().name} dropped ${title?.title}`, id);
         push.activity(
           sb, ids,
           s === "finished" ? "finished" : "status",
@@ -642,6 +650,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const ids = liveRef.current;
       if (ids && sb) {
         push.watched(sb, ids, id, "me", score);
+        push.notify(sb, ids, "rated", `${meUser().name} rated ${getTitle(id)?.title} ${score}/10 ⭐`, id);
         push.activity(sb, ids, "rated", `rated ${getTitle(id)?.title} ${score}/10`, id);
       }
     },
@@ -653,7 +662,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const ids = liveRef.current;
       if (ids && sb) {
         push.watched(sb, ids, id, w);
-        if (w === "me") push.activity(sb, ids, "finished", `watched ${getTitle(id)?.title}`, id);
+        const t = getTitle(id);
+        if (w === "me") {
+          push.notify(sb, ids, "watched", `${meUser().name} marked ${t?.title} as watched 📺`, id);
+          push.activity(sb, ids, "finished", `watched ${t?.title}`, id);
+        } else {
+          push.notify(sb, ids, "watched", `${meUser().name} marked ${t?.title} watched for you 📺`, id);
+        }
       }
     },
     [clock, sb]
@@ -673,7 +688,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const ids = liveRef.current;
       if (ids && sb) {
         push.watched(sb, ids, id, w, score);
-        if (w === "me") push.activity(sb, ids, "rated", `rated ${getTitle(id)?.title} ${score}/10`, id);
+        const t = getTitle(id);
+        if (w === "me") {
+          push.notify(sb, ids, "rated", `${meUser().name} rated ${t?.title} ${score}/10 ⭐`, id);
+          push.activity(sb, ids, "rated", `rated ${t?.title} ${score}/10`, id);
+        } else {
+          push.notify(sb, ids, "rated", `${meUser().name} logged ${score}/10 for you on ${t?.title} ⭐`, id);
+        }
       }
     },
     [clock, sb]
@@ -760,6 +781,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // refetch landing before the DB update commits) cannot re-open it.
     const key = sessionKeyRef.current;
     const sid = sessionIdRef.current;
+    const partyTitle = sessionTitleRef.current ? getTitle(sessionTitleRef.current) : null;
     if (key) dismissSession(key);
     startedThisMountRef.current = false;
     dispatch({ type: "endParty" });
@@ -768,6 +790,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // session id hasn't landed yet (raced start).
       if (sid) void push.setSessionStatus(sb, sid, status);
       else push.endSession(sb, ids);
+      push.notify(
+        sb, ids, "party",
+        status === "completed"
+          ? `${meUser().name} wrapped up ${partyTitle?.title ?? "the watch-along"}: finished! 🎉`
+          : `${meUser().name} wrapped up the watch-along of ${partyTitle?.title ?? "your show"}`,
+        partyTitle?.id
+      );
       push.activity(
         sb, ids, "party",
         status === "completed" ? "finished a watch-along together 🎉" : "wrapped up a watch-along"
@@ -813,10 +842,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
   const cancelPlan = useCallback(
     (planId: string) => {
+      const plan = plansRef.current.find((p) => p.id === planId);
       dispatch({ type: "planRemove", planId });
       const ids = liveRef.current;
       // optimistic local ids ("plan<clock>") have no server row yet; uuids do
-      if (ids && sb && planId.includes("-")) push.cancelPlan(sb, planId);
+      if (ids && sb && planId.includes("-")) {
+        push.cancelPlan(sb, planId);
+        const t = plan ? getTitle(plan.titleId) : null;
+        push.notify(sb, ids, "plan", `${meUser().name} cancelled the plan for ${t?.title ?? "your movie night"} 📅`, t?.id);
+      }
     },
     [sb]
   );
@@ -878,8 +912,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           : [];
         dispatch({ type: "vote", vote: myVoteObj, activity: liveActivity, notifs: [] });
         if (positive && title) {
-          push.notify(sb, liveIdsNow, "favorited", `${meUser().name} liked ${title.title}`, id);
+          push.notify(
+            sb, liveIdsNow, "favorited",
+            value === "love"
+              ? `${meUser().name} LOVED ${title.title} 💖`
+              : `${meUser().name} liked ${title.title}`,
+            id
+          );
           push.activity(sb, liveIdsNow, "voted", `${value === "love" ? "loved" : "liked"} ${title.title}`, id);
+        }
+        if (value === "seen" && title) {
+          push.notify(sb, liveIdsNow, "watched", `${meUser().name}'s already seen ${title.title} 👀`, id);
         }
         pushVoteAndMaybeMatch(sb, liveIdsNow, id, value).then((matched) => {
           if (matched) {

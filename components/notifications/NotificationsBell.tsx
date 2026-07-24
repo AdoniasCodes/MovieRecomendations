@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 const ICON: Record<string, string> = {
   started: "▶️", favorited: "👍", watchlisted: "🍿", cinema: "🎬",
   matched: "💞", rated: "⭐", nudge: "👋", note: "📝",
+  plan: "📅", ai: "🤖", watched: "📺", party: "🎉",
 };
 
 export function NotificationsBell() {
