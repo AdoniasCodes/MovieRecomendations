@@ -3,7 +3,9 @@
 import { BottomNav } from "@/components/nav/BottomNav";
 import { AssistantButton } from "@/components/ai/AssistantButton";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
+import { NudgeOverlay } from "@/components/notifications/NudgeOverlay";
 import { MatchOverlay } from "@/components/discover/MatchOverlay";
+import { SyncStatus } from "@/components/SyncStatus";
 import { TitleSheetHost } from "@/components/title/TitleSheet";
 import { WatchParty } from "@/components/watch/WatchParty";
 import { RegisterSW } from "@/components/pwa/RegisterSW";
@@ -24,6 +26,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <AssistantButton />
       <NotificationsBell />
       <MatchOverlay />
+      <NudgeOverlay />
+      <SyncStatus />
       <TitleSheetHost />
       <WatchParty />
       <RegisterSW />

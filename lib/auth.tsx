@@ -44,42 +44,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [partner, setPartner] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(supabaseConfigured());
 
+  // Resolves the couple slice. Returns false on a FAILED/PARTIAL load (network
+  // error mid-way) so callers retry; a transient failure must never clear
+  // still-valid couple state or read as "genuinely unpaired" — one flaky boot
+  // used to leave the app silently in demo mode until a full restart.
   const loadAll = useCallback(
-    async (s: Session | null) => {
-      if (!sb || !s) {
+    async (s: Session | null): Promise<boolean> => {
+      if (!sb) return true;
+      if (!s) {
         setProfile(null);
         setCouple(null);
         setPartner(null);
-        return;
+        return true;
       }
       const uid = s.user.id;
       const fallbackName = (s.user.email?.split("@")[0] ?? "You").replace(/^\w/, (c) => c.toUpperCase());
-      // make sure a profile row exists
-      await sb.rpc("ensure_profile", { p_name: fallbackName, p_emoji: "💞", p_color: "#DB2777" });
+      try {
+        // make sure a profile row exists (best-effort: it exists after first boot)
+        await sb
+          .rpc("ensure_profile", { p_name: fallbackName, p_emoji: "💞", p_color: "#DB2777" })
+          .then(null, () => null);
 
-      const { data: me } = await sb.from("profiles").select("id,name,emoji,color").eq("id", uid).single();
-      setProfile(me ?? null);
+        const me = await sb.from("profiles").select("id,name,emoji,color").eq("id", uid).single();
+        if (!me.error && me.data) setProfile(me.data);
 
-      const { data: mem } = await sb.from("couple_members").select("couple_id").eq("user_id", uid).maybeSingle();
-      if (!mem) {
-        setCouple(null);
-        setPartner(null);
-        return;
-      }
-      const { data: c } = await sb.from("couples").select("id,code").eq("id", mem.couple_id).maybeSingle();
-      setCouple(c ?? null);
+        const mem = await sb.from("couple_members").select("couple_id").eq("user_id", uid).maybeSingle();
+        if (mem.error) return false;
+        if (!mem.data) {
+          // genuinely unpaired (the query succeeded and found nothing)
+          setCouple(null);
+          setPartner(null);
+          return true;
+        }
+        const c = await sb.from("couples").select("id,code").eq("id", mem.data.couple_id).maybeSingle();
+        if (c.error || !c.data) return false;
+        setCouple(c.data);
 
-      const { data: others } = await sb
-        .from("couple_members")
-        .select("user_id")
-        .eq("couple_id", mem.couple_id)
-        .neq("user_id", uid);
-      const otherId = others?.[0]?.user_id;
-      if (otherId) {
-        const { data: p } = await sb.from("profiles").select("id,name,emoji,color").eq("id", otherId).maybeSingle();
-        setPartner(p ?? null);
-      } else {
-        setPartner(null);
+        const others = await sb
+          .from("couple_members")
+          .select("user_id")
+          .eq("couple_id", mem.data.couple_id)
+          .neq("user_id", uid);
+        if (others.error) return false;
+        const otherId = others.data?.[0]?.user_id;
+        if (!otherId) {
+          setPartner(null); // paired, waiting for the partner to join
+          return true;
+        }
+        const p = await sb.from("profiles").select("id,name,emoji,color").eq("id", otherId).maybeSingle();
+        if (p.error || !p.data) return false;
+        setPartner(p.data);
+        return true;
+      } catch {
+        return false;
       }
     },
     [sb]
@@ -109,9 +126,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!active) return;
         setSession(data.session);
         loadedFor = data.session?.user.id ?? null;
-        await withTimeout(loadAll(data.session), 8000, undefined);
+        const ok = await withTimeout(loadAll(data.session), 8000, false);
+        if (!ok) loadedFor = undefined; // failed load: the next auth event must retry
       } catch (e) {
         console.error("auth boot failed", e);
+        loadedFor = undefined;
       } finally {
         if (active) setLoading(false);
       }
@@ -125,9 +144,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       loadedFor = key;
       try {
-        await loadAll(s);
+        const ok = await loadAll(s);
+        if (!ok) loadedFor = undefined;
       } catch (e) {
         console.error("auth reload failed", e);
+        loadedFor = undefined;
       } finally {
         // late-arriving session (e.g. after a getSession timeout) also unlocks
         setLoading(false);
@@ -138,6 +159,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sub.subscription.unsubscribe();
     };
   }, [sb, loadAll]);
+
+  // SELF-HEAL: signed in but the couple slice is incomplete (couple or partner
+  // unresolved). Retry quietly until it completes — on a timer, on reconnect,
+  // and on foreground — so a flaky boot can never strand the app in demo mode.
+  const incomplete = !!session && (!couple || !partner);
+  useEffect(() => {
+    if (!sb || loading || !incomplete) return;
+    let busy = false;
+    const tryLoad = async () => {
+      if (busy || document.visibilityState !== "visible") return;
+      busy = true;
+      try {
+        await loadAll(session);
+      } finally {
+        busy = false;
+      }
+    };
+    const t = setTimeout(tryLoad, 4_000);
+    const iv = setInterval(tryLoad, 20_000);
+    window.addEventListener("online", tryLoad);
+    document.addEventListener("visibilitychange", tryLoad);
+    return () => {
+      clearTimeout(t);
+      clearInterval(iv);
+      window.removeEventListener("online", tryLoad);
+      document.removeEventListener("visibilitychange", tryLoad);
+    };
+  }, [sb, loading, incomplete, session, loadAll]);
 
   // while waiting for the partner to join, watch the couple for a new member
   useEffect(() => {
@@ -186,7 +235,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [sb, session, loadAll]
   );
 
-  const refresh = useCallback(() => loadAll(session), [loadAll, session]);
+  const refresh = useCallback(async () => {
+    await loadAll(session);
+  }, [loadAll, session]);
 
   const value = useMemo<AuthCtx>(
     () => ({

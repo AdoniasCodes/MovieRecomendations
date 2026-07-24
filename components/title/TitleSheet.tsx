@@ -72,6 +72,7 @@ function Body({ titleId }: { titleId: string }) {
   const [simLoading, setSimLoading] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [planOpen, setPlanOpen] = useState(false);
+  const [nudged, setNudged] = useState(false);
 
   async function loadSimilar(audience: Audience) {
     setSimLoading(true);
@@ -176,9 +177,32 @@ function Body({ titleId }: { titleId: string }) {
             label={cinema ? "On cinema list" : "Watch in cinema"}
           />
           <Action
-            onClick={() => store.nudge(`${store.me.name}'s thinking about ${t.title} 👀`, t.id)}
-            icon={<Bell className="h-5 w-5" />}
-            label={`Nudge ${store.partner.name}`}
+            active={nudged}
+            onClick={() => {
+              // guarded: a double-tap must not send two nudges
+              if (nudged) return;
+              store.nudge(`${store.me.name}'s thinking about ${t.title} 👀`, t.id);
+              setNudged(true);
+              try {
+                navigator.vibrate?.(40);
+              } catch {}
+              setTimeout(() => setNudged(false), 2500);
+            }}
+            icon={
+              nudged ? (
+                <motion.span
+                  initial={{ scale: 0.4 }}
+                  animate={{ scale: [0.4, 1.35, 1] }}
+                  transition={{ duration: 0.45 }}
+                  className="text-lg leading-none"
+                >
+                  💘
+                </motion.span>
+              ) : (
+                <Bell className="h-5 w-5" />
+              )
+            }
+            label={nudged ? `Nudged ${store.partner.name}!` : `Nudge ${store.partner.name}`}
           />
         </div>
 

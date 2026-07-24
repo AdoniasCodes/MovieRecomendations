@@ -38,6 +38,7 @@ export function NotificationsBell() {
     if (prev === null || unreadCount <= prev || open) return; // skip initial hydrate
     const newest = store.notifications.find((n) => !n.read && n.toId === store.me.id);
     if (!newest) return;
+    if (newest.type === "nudge") return; // nudges get the full NudgeOverlay takeover
     setBanner(newest);
     try {
       navigator.vibrate?.([60, 40, 60]);

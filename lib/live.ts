@@ -477,14 +477,27 @@ const COUPLE_TABLES = [
 // channel down with it (learned the hard way in regression testing).
 const EXTRA_TABLES = ["activity", "watch_plans"];
 
+// who wrote the row, per table: a PARTNER's write must always refetch, even
+// inside our own 4s self-echo window (a rapid nudge exchange used to get
+// swallowed: her send opened the window, his reply echo landed inside it).
+const ACTOR_COL: Record<string, string> = {
+  notifications: "actor_id", activity: "actor_id", votes: "user_id",
+  watchlist: "added_by", watched: "watcher", notes: "author_id", ai_messages: "author_id",
+};
+
 export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: () => void): () => void {
   // every couple-scoped table (reactions now carries couple_id too) is filtered
   // to this couple, so another couple's activity never triggers a refetch storm.
   const wire = (name: string, tables: string[]) => {
     const ch = sb.channel(`${name}:${ids.couple}`);
     for (const table of tables) {
-      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, () => {
-        if (isSelfEcho(table)) return;
+      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, (payload) => {
+        const col = ACTOR_COL[table];
+        const nu = payload.new as Record<string, unknown> | null;
+        const old = payload.old as Record<string, unknown> | null;
+        const actor = col ? nu?.[col] ?? old?.[col] : undefined;
+        const partnerWrite = actor != null && actor !== ids.my;
+        if (!partnerWrite && isSelfEcho(table)) return; // own echo (or unknown author) in window
         onChange();
       });
     }
