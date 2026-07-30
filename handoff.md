@@ -72,9 +72,14 @@ Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in com
   motor, auto-stop when hidden, her Stop wins, role swap flips both sides.
   Probe: `scratchpad/probe-anniv.mjs` (see instructions.md §8b for the two new flakiness
   rules it encodes).
-- Deploy: commit 1043fd8 pushed to main. **Verify by grepping the deployed chunk**
-  `/_next/static/chunks/app/anniversary/page-ef14bd95092dbdf3.js` for "director" (Netlify
-  posts no GitHub status on this repo; free tier can take 10+ min).
+- **Deploy VERIFIED LIVE** (commits 1043fd8 + 5f86294 on main). `/anniversary` returns 200 (a
+  route that did not exist before), and all four bundles were grepped on the live site:
+  anniversary page chunk ("You are the director", "Ping her phone", "Not this one"), after-dark
+  chunk ("One of you drives", "I am holding it", "iPhone can only tap"), layout chunk
+  ("Stay right here", "There is more"), and shared chunk 665 (the script.ts content).
+  NOTE: Netlify's PAGE chunk hashes differ from a local build (local
+  `page-ef14bd95092dbdf3.js` is `page-d76cf9021a8fd3be.js` live), so always pull the page chunk
+  path out of the live HTML first. Shared chunks like `665-*.js` do match local.
 - Known pre-existing noise, NOT a regression: React #418 hydration warning for Hermi on `/`
   and `/profile`, caused by useWhoami's server snapshot defaulting to "panda". Reproduced on
   pages with no anniversary code.

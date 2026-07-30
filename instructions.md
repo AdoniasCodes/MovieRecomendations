@@ -285,7 +285,12 @@ and grep the HTML for content unique to the new change.
 (`grep -rl "<unique string>" .next/static/chunks/`), then fetch that same chunk path from the
 live site and grep it. Shared chunks (e.g. `695-*.js` for lib/store.tsx) keep IDENTICAL hashed
 names between local and Netlify builds; the layout chunk hash DIFFERS (env inlining), so for
-layout-bundled components pull the current layout path out of the live HTML first. A free-tier
+layout-bundled components pull the current layout path out of the live HTML first.
+**PER-ROUTE page chunks also differ from local** (confirmed Phase 13: local
+`app/anniversary/page-ef14bd95092dbdf3.js` shipped as `page-d76cf9021a8fd3be.js`), so a 404 on
+a locally-derived page chunk path does NOT mean the deploy failed. Fetch the route's HTML and
+grep out `/_next/static/chunks/app/<route>/page-*.js` first. A brand new route returning 200 is
+itself strong evidence the deploy landed. A free-tier
 deploy can take 10+ min to go live — keep polling the chunk, not the CI (there is none).
 
 **If local curl times out (000), do NOT assume the deploy failed.** Rule out a local/ISP path
