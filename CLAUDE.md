@@ -28,6 +28,29 @@ same commit. Types are free-form text in the DB; extend `NotificationType` + the
 ICON map. Nudges get the full `NudgeOverlay` takeover (bell banner is suppressed for
 them); everything else gets the bell banner + badge.
 
+## Year One (the anniversary experience, Phase 13)
+- **All content lives in `lib/anniversary/script.ts`.** One flat list of modules. To change what
+  Hermi sees, edit that file and nothing else. Photos go in `public/anniversary/photos/`, voice
+  notes in `public/anniversary/audio/`.
+- **Panda paces it, not a clock.** Only the morning banner is date-gated; every other module is
+  fired by hand from `/anniversary`. Panda explicitly rejected time-gating because a real day
+  drifts. Do not add schedules to it.
+- **App-usage statistics are out.** Panda ruled them out: the couple has not used the app
+  enough for "movies matched" style numbers to mean anything. The numbers module uses his own
+  relationship facts.
+- **Who may drive:** on July 31 it is Panda only (Hermi's device is display-only and the URL is
+  a locked door). From August 1 either of them can drive it or walk it alone. Gate on the
+  SESSION identity, never the display toggle (instructions.md §8e).
+
+## After Dark Pulse
+- Lives behind the existing After Dark consent screen, same as the dice game. No store
+  actions, no notifications, no DB writes: After Dark is a sealed room and an 18+ event does
+  not belong in the notification board.
+- **Whoever is receiving always holds a full-width Stop**, and the receiver auto-stops on
+  background, on a 10 second link gap, and after 20 minutes. Never weaken this.
+- Be honest in the copy about what each phone can do (Android buzzes, iPhone only taps). See
+  instructions.md §8f.
+
 ## Don't
 - Don't add real API keys to the repo. Use `.env.local` (gitignored).
 - Don't break the `store.tsx` action seam or move uuid handling out of `live.ts`.

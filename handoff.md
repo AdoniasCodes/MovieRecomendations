@@ -1,6 +1,90 @@
 # handoff.md — Amore Movies
 
-_Updated: 2026-07-25_
+_Updated: 2026-07-30_
+
+## CURRENT PHASE (2026-07-30): Phase 13 "Year One" BUILT + PUSHED, awaiting content + 2 manual steps
+Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in commit 1043fd8
+(pushed to main). E2E 17/17 green on a local prod build.
+
+### A. The anniversary experience
+- **`lib/anniversary/script.ts` is the entire content file.** The night is a flat list of
+  modules: banner, letters, voice notes, photos, guess-the-photo game, us-in-numbers, the 5
+  itinerary stops, jokes, finale. Editing that one file changes everything Hermi sees.
+- **Panda is the director.** `/anniversary` (reached from the new "Year One" card in Profile)
+  lists every module: tap to send it to her screen, any order, skip anything, preview locally
+  before sending, plus Ping her phone / Hold screen / Release and a live "on her screen" ack.
+  Nothing is time-gated except the morning, by Panda's explicit decision (a real day drifts).
+- **Her side** is `components/anniversary/AnniversaryStage.tsx`, mounted in providers.tsx at
+  **z-[90]** (above everything except WelcomeGate at 100). Ambient holding screen between
+  modules so she never falls back into the normal app mid-story. On July 31 her first open
+  fires the banner and walks to the first letter by itself, once per device
+  (`amore-movies/anniv-2026-opened`), then waits for him. A long press on the faint top-right
+  dot releases the takeover if anything ever goes wrong.
+- **Reopenable forever** from Profile. From Aug 1 either of them can drive it or walk it alone
+  on one phone ("Or walk through it all on this phone").
+- **Itinerary as Panda described it:** ~3pm the room (cake, flowers, wine, private), ~4:35pm
+  tattoos, evening cocktails + dinner, late hookah, ~11pm back to the room into the finale.
+
+### B. After Dark Pulse (the 18+ addition)
+- `lib/haptics.ts` + `components/afterdark/PulseRemote.tsx`, entered from a new Pulse tile on
+  the After Dark consent screen (so the house rules are always seen first).
+- **Device reality:** Panda's Android runs every pattern including a genuinely solid buzz.
+  **Hermi's iPhone 14 Pro Max cannot vibrate from a web page at all** (`navigator.vibrate` does
+  not exist in Safari); it falls back to the iOS 17.4 `<input switch>` taptic trick, which can
+  only TAP, never hold. Rhythms work, sustained buzz does not. The UI says so.
+  **This is why role swap exists:** one tap and his Android becomes the receiver instead.
+- Modes: constant, pulse, wave, heartbeat, tease. Level changes duty cycle and tempo, not
+  strength (the web has no amplitude control anywhere).
+- Safety: receiver always has a full-width Stop, auto-stops on background / 10s link gap /
+  20min cap, holds a screen Wake Lock, needs an arming tap. No DB writes, no notifications.
+
+### Architecture notes worth knowing before touching it
+- Transport is Supabase **broadcast** (`lib/broadcast.ts`), so **NO MIGRATION** is needed.
+  Nothing for Panda to run in the SQL editor.
+- `lib/broadcast.ts` shares ONE channel per topic per client, reference counted. A client
+  cannot hold two subscriptions to the same topic, and Panda's phone has both the global stage
+  and the director panel wanting `stage:<coupleId>`. See instructions.md §8d.
+- Gating uses `identityFromEmail(auth.session?.user.email)`, NOT the display toggle, and fails
+  closed while auth loads. The toggle reads "panda" on a cold load and flashed the whole
+  surprise open for one render. See instructions.md §8e.
+
+### PANDA MUST DO (in priority order)
+1. **TONIGHT, BEFORE MIDNIGHT: get Hermi to open the app once.** She has not opened it since
+   July 12, so her iPhone is running a stale bundle and none of this reaches her until it
+   loads the new code. Any pretext works (nudge her about a movie). Then have her do
+   **Profile > Turn on alerts** (she still has 0 push subscriptions) so "Ping her phone" works.
+   **No amount of code covers this step.**
+2. **Drop the content:** photos into `public/anniversary/photos/`, voice notes into
+   `public/anniversary/audio/` (note-morning / note-mid / note-night, plus optional
+   ambient.mp3 for background music), and the letters/jokes/numbers text anywhere readable.
+   Then every `REPLACE ME` in `lib/anniversary/script.ts` gets filled in and redeployed.
+   Photo modules currently point at `/couple.jpg` so nothing 404s; voice notes point at their
+   real paths on purpose, so a missing recording is obvious in rehearsal.
+3. **Dress rehearsal** before sleeping: open `/anniversary` on his phone against her phone (or
+   a second browser), fire a few modules, confirm they land.
+4. Test Pulse on her actual iPhone at some point today. The taptic path cannot be verified
+   from this machine. If it feels like nothing, use Swap so his Android receives.
+
+### Verification done
+- `npm run build` green. Two-user Playwright probe **17/17** on a local prod build:
+  lockout (card hidden + URL locked, no panel leak), module lands and acks, reload resumes
+  mid-story, channel re-acks after reconnect, holding screen, release, pulse drives a real
+  motor, auto-stop when hidden, her Stop wins, role swap flips both sides.
+  Probe: `scratchpad/probe-anniv.mjs` (see instructions.md §8b for the two new flakiness
+  rules it encodes).
+- Deploy: commit 1043fd8 pushed to main. **Verify by grepping the deployed chunk**
+  `/_next/static/chunks/app/anniversary/page-ef14bd95092dbdf3.js` for "director" (Netlify
+  posts no GitHub status on this repo; free tier can take 10+ min).
+- Known pre-existing noise, NOT a regression: React #418 hydration warning for Hermi on `/`
+  and `/profile`, caused by useWhoami's server snapshot defaulting to "panda". Reproduced on
+  pages with no anniversary code.
+
+### Planned, deliberately NOT built (Panda asked to keep it in mind)
+Two or three couple mini games tailored to them, most likely **Would You Rather** and
+**Truth or Dare**, written specifically for Panda and Hermi rather than generic packs. Natural
+home is a tile in Us or its own tab, reusing `lib/afterdark/deck.ts` card structure plus the
+existing per-card timer and skip mechanics. Also considered and dropped: pulling their
+conversation text out of Snapchat via API.
 
 ## Current phase (2026-07-24/25): Phase 12 "Notifications actually flow" SHIPPED + DEPLOY VERIFIED
 Panda reported: Hermi's actions never appear in his in-app notification board; wanted a

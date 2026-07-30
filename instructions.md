@@ -197,6 +197,68 @@ playwright cache (`~/Library/Caches/ms-playwright/chromium-*/...`). Pattern (see
 - Leave the couple's data as found (toggle back what you toggled; nudges are acceptable
   residue but tell Panda).
 
+**Two probe-flakiness rules (Phase 13, both cost a debugging cycle):**
+- **Never hard-navigate a signed-in context mid-probe.** `page.goto` re-summons the
+  WelcomeGate and the accumulated gate state is what makes probes flaky. Sign in once, then
+  navigate ONLY via the bottom nav and in-app links. Anything needing a clean slate gets a
+  throwaway context.
+- **Run throwaway contexts that sign in as an EXISTING user FIRST**, before the main contexts
+  exist. Signing the same account in twice can invalidate the older session and silently kill
+  the main context's realtime for every later step.
+- Accessible names include the description text inside a button, so
+  `getByRole("button", { name: /^Pulse$/ })` will not match a tile whose body reads
+  "Pulse / No dice, no cards...". Use unanchored patterns for those.
+- **Known pre-existing noise:** React error #418 (hydration text mismatch) fires for Hermi on
+  `/` and `/profile` and is unrelated to any new feature. Cause: `useWhoami`'s
+  `getServerSnapshot` returns the default "panda", so her name text differs for one frame.
+  Documented and accepted in lib/identity.ts. Do not chase it during a probe.
+
+## §8d. Supabase BROADCAST features (anniversary stage, After Dark Pulse)
+For live presentation features that need no persistence, use Realtime **broadcast** via
+`lib/broadcast.ts` instead of a table. No migration, instant, and completely separate from
+the postgres_changes channels in `lib/live.ts`.
+
+Two rules learned the hard way in Phase 13:
+
+1. **ONE channel per topic per client.** A single Supabase client cannot hold two
+   subscriptions to the same topic: the second `phx_join` never completes, so that consumer's
+   sends queue forever and the UI reads "not connected". This bites whenever a globally
+   mounted component and a page component want the same topic (AnniversaryStage lives in
+   providers.tsx, DirectorPanel is a page, both want `stage:<coupleId>`). `openBroadcast`
+   therefore shares and reference counts the underlying channel, binds ONE
+   `.on("broadcast", { event: "*" })`, and fans out to each consumer's handler map. Keep
+   event names lowercase: realtime-js lowercases them when matching bindings.
+   `self: false` is what stops the sender's own globally mounted listener from reacting.
+2. **Broadcast is fire and forget, so build a resume handshake.** Anything sent while the
+   other device was reloading or reconnecting is gone. The receiver sends `hello` on join and
+   the sender answers with its FULL current state (including "showing nothing but the holding
+   screen", not just "showing module X"), plus a localStorage cache on the receiver so a
+   reload repaints instantly instead of waiting for the round trip.
+
+## §8e. Never gate anything on the DISPLAY identity
+`getWhoami()`/`useWhoami()` (lib/identity.ts) is a localStorage toggle that reads `"panda"`
+on a cold page load and only corrects inside an effect. Any gate built on it **fails open for
+at least one render**, which in Phase 13 flashed the entire anniversary surprise onto Hermi's
+screen on a hard navigation. Use `identityFromEmail(auth.session?.user.email)` (authoritative,
+what WelcomeGate itself follows) and render nothing while `auth.loading`, so the gate fails
+CLOSED. Fall back to the toggle only when `!auth.configured` (demo mode has no session).
+
+## §8f. Web vibration, honestly (lib/haptics.ts)
+- **Android Chrome:** `navigator.vibrate(pattern)`, arrays of alternating on/off ms. There is
+  NO amplitude control in the web platform anywhere, so "intensity" can only mean duty cycle
+  and tempo. A continuous buzz is one window-length vibration re-issued just before it
+  expires (a new call replaces the running pattern).
+  **Odd-length patterns invert phase on every repetition**, so a repeated `[520]` becomes a 50
+  percent stutter instead of a solid buzz. Pad odd cycles, and special-case "solid" as a
+  single long vibration.
+- **iOS Safari:** `navigator.vibrate` does not exist and never has. The only route to the
+  Taptic Engine is `<input type="checkbox" switch>` (17.4+) clicked via its `<label>`, which
+  produces **taps only**; there is no way to hold the motor on. Fast taps read as a flutter.
+  Say so in the UI rather than promising a buzz the phone cannot make.
+- Both are blocked while the page is hidden, both need one prior user gesture, and neither has
+  any background path. A remote-controlled receiver therefore needs a Wake Lock, an arming
+  tap, and auto-stop on `visibilitychange`.
+
 ## §8c. Realtime + service worker hard rules (regressions that actually happened)
 - **Never subscribe a realtime channel to a table that may not exist yet.** If any
   postgres_changes binding fails (table missing pre-migration), the WHOLE channel dies
