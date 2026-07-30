@@ -4,20 +4,35 @@ import { PinLogin } from "@/components/auth/PinLogin";
 import { EnableAlerts } from "@/components/notifications/EnableAlerts";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { PosterCard } from "@/components/ui/PosterCard";
-import { useWhoami } from "@/lib/identity";
+import { anniversaryPhase, type AnniversaryPhase } from "@/lib/anniversary/date";
+import { useAuth } from "@/lib/auth";
+import { identityFromEmail, useWhoami } from "@/lib/identity";
 import { TASTE_AMORE, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import type { Title } from "@/lib/types";
-import { Flame, RefreshCw } from "lucide-react";
+import { Flame, Heart, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const prettify = (s: string) => s.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
 export default function ProfilePage() {
   const store = useStore();
+  const auth = useAuth();
   const who = useWhoami();
   const taste = who === "hermi" ? TASTE_AMORE : TASTE_SEED;
   const loved = taste.lovedTitleIds.map(getTitle).filter(Boolean) as Title[];
+
+  // Until July 31 is over this card is Panda's console, so it stays hidden from
+  // Hermi. Afterwards it belongs to both of them, as the way back in.
+  // Resolved in an effect: a date read during first render is a hydration risk.
+  const [phase, setPhase] = useState<AnniversaryPhase | null>(null);
+  useEffect(() => setPhase(anniversaryPhase()), []);
+  // identity from the SESSION, not the display toggle (which reads "panda" on a
+  // cold load), so the card can never flash into view on her phone
+  const realWho = auth.configured ? identityFromEmail(auth.session?.user.email) : who;
+  const showAnniversary =
+    phase !== null && !(auth.configured && auth.loading) && (phase === "after" || realWho === "panda");
 
   const reset = () => {
     if (!confirm("Reset all watchlist, votes and matches? Your taste profile stays.")) return;
@@ -51,6 +66,29 @@ export default function ProfilePage() {
 
       {/* device alerts (web push) */}
       <EnableAlerts />
+
+      {/* year one: the anniversary experience */}
+      {showAnniversary && (
+        <Link
+          href="/anniversary"
+          className="flex w-full items-center gap-3 rounded-2xl bg-accent-soft p-4 text-left text-sm ring-1 ring-white/10 transition active:scale-[0.99]"
+        >
+          <Heart className="h-5 w-5 text-magenta" />
+          <span>
+            <span className="flex items-center gap-2 font-semibold">
+              Year One
+              <span className="rounded bg-magenta/20 px-1.5 py-0.5 text-[10px] font-bold text-magenta">
+                {phase === "after" ? "Relive it" : "Ready"}
+              </span>
+            </span>
+            <span className="text-xs text-white/45">
+              {phase === "after"
+                ? "Everything from our anniversary, any time you want it"
+                : "The whole day, and you are the one driving it"}
+            </span>
+          </span>
+        </Link>
+      )}
 
       {/* after dark */}
       <Link

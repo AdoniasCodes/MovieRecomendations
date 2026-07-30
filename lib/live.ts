@@ -129,7 +129,7 @@ export async function loadCoupleState(
 
 // Fire-and-forget web push to the partner's registered devices. Failure is
 // fine: the notifications row is the source of truth, push is just the knock.
-async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string) {
+async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string, title?: string) {
   try {
     const { data } = await sb.auth.getSession();
     const token = data.session?.access_token;
@@ -137,7 +137,7 @@ async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string) {
     const res = await fetch("/api/push", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ toUserId, title: "Amore Movies 💞", body, url: "/" }),
+      body: JSON.stringify({ toUserId, title: title ?? "Amore Movies 💞", body, url: "/" }),
       signal: AbortSignal.timeout(10_000),
     });
     // observable via remote debugging: a 503 or {devices:0} means push is
@@ -270,6 +270,15 @@ export async function flushWriteQueue(sb: SupabaseClient, ids: Ids): Promise<num
   }
   removeOps(done);
   return done.length;
+}
+
+/**
+ * A bare web push with no notifications row behind it. Used by the anniversary
+ * director panel to knock on her phone ("open the app") without dropping an
+ * entry in the notification board that would spoil the surprise.
+ */
+export async function pingPartnerDevice(sb: SupabaseClient, ids: Ids, body: string, title?: string) {
+  await sendWebPush(sb, ids.her, body, title);
 }
 
 export const push = {

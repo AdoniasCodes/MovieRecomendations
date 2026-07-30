@@ -66,6 +66,22 @@ export function useWhoami(): WhoKey {
   );
 }
 
+/**
+ * The AUTHORITATIVE identity: derived from the signed-in Supabase account
+ * rather than the local display toggle. Returns null while the session is still
+ * unknown.
+ *
+ * Use this instead of getWhoami/useWhoami for anything that must not be wrong,
+ * for example gating a surprise. The display toggle lives in localStorage, is
+ * "panda" by default on a cold page load, and only catches up in an effect, so
+ * a gate built on it fails OPEN for one render. The session email cannot be
+ * wrong and is what WelcomeGate itself follows.
+ */
+export function identityFromEmail(email: string | null | undefined): WhoKey | null {
+  if (!email) return null;
+  return PIN_IDENTITIES.find((p) => p.email === email)?.key ?? null;
+}
+
 const byKey = (k: WhoKey): PinIdentity =>
   PIN_IDENTITIES.find((p) => p.key === k) ?? PIN_IDENTITIES[0];
 

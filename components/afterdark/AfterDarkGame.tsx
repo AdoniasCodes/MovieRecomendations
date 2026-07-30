@@ -16,8 +16,9 @@ import {
 import { AfterDarkStats, loadStats, recordNight } from "@/lib/afterdark/stats";
 import { cn } from "@/lib/cn";
 import { useStore } from "@/lib/store";
+import { PulseRemote } from "@/components/afterdark/PulseRemote";
 import { AnimatePresence, motion } from "framer-motion";
-import { EyeOff, Flame, Link2, Moon, Pause, SkipForward, Sparkles, X } from "lucide-react";
+import { EyeOff, Flame, Link2, Moon, Pause, SkipForward, Sparkles, Vibrate, X } from "lucide-react";
 import Link from "next/link";
 import { ReactNode, useEffect, useRef, useState } from "react";
 
@@ -30,7 +31,7 @@ const emptyHeatCounts = (): Record<HeatKey, number> => ({ "1": 0, "2": 0, "3": 0
 
 export function AfterDarkGame() {
   const store = useStore();
-  const [phase, setPhase] = useState<"consent" | "playing" | "recap">("consent");
+  const [phase, setPhase] = useState<"consent" | "playing" | "recap" | "pulse">("consent");
   const [game, setGame] = useState<GameState>(() => freshGame("me"));
   const [card, setCard] = useState<Card | null>(null);
   const [rolling, setRolling] = useState(false);
@@ -207,6 +208,12 @@ export function AfterDarkGame() {
     setPhase("consent");
   };
 
+  /* ----------------------------------------------------------------- pulse */
+  // reached only from the consent screen, so the house rules are always seen first
+  if (phase === "pulse") {
+    return <PulseRemote onExit={() => setPhase("consent")} />;
+  }
+
   /* ---------------------------------------------------------- consent gate */
   if (phase === "consent") {
     return (
@@ -241,6 +248,20 @@ export function AfterDarkGame() {
           className="w-full rounded-2xl bg-gradient-to-r from-rose-600 to-magenta py-4 text-base font-bold shadow-glow-magenta transition active:scale-[0.98]"
         >
           We are both in 🔥
+        </button>
+        <button
+          onClick={() => setPhase("pulse")}
+          className="glass flex w-full items-center gap-3 rounded-2xl p-4 text-left transition active:scale-[0.98]"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-magenta/15 ring-1 ring-magenta/25">
+            <Vibrate className="h-5 w-5 text-rose-200" />
+          </span>
+          <span>
+            <span className="block text-sm font-bold">Pulse</span>
+            <span className="block text-xs text-white/45">
+              No dice, no cards. One phone controls the other one.
+            </span>
+          </span>
         </button>
         <Link href="/profile" className="text-xs text-white/40 underline-offset-2 hover:underline">
           Actually, back to the movies

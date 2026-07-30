@@ -1,5 +1,6 @@
 "use client";
 
+import { AnniversaryStage } from "@/components/anniversary/AnniversaryStage";
 import { BottomNav } from "@/components/nav/BottomNav";
 import { AssistantButton } from "@/components/ai/AssistantButton";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
@@ -27,6 +28,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <NotificationsBell />
       <MatchOverlay />
       <NudgeOverlay />
+      <AnniversaryStage />
       <SyncStatus />
       <TitleSheetHost />
       <WatchParty />
