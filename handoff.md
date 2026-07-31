@@ -48,18 +48,52 @@ Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in com
   closed while auth loads. The toggle reads "panda" on a cold load and flashed the whole
   surprise open for one render. See instructions.md §8e.
 
+### CONTENT IS IN AND LIVE (2026-07-31, commit 8e6d61a)
+- **12 photos** in `public/anniversary/photos/` (3.2MB, longest edge 1400, orientation
+  checked). `cutout-us.png` stays PNG for its alpha. All 12 verified 200 on the live site.
+- **3 voice notes** as `note-1.mp3` (3:06), `note-2.mp3` (1:03), `note-3.mp3` (3:06),
+  numbered rather than tied to a time of day because Panda picks the moment. Transcoded
+  mono 96k (17.3MB down to 4.9MB); durations and levels checked against the originals.
+- **Both remaining letters written** (`letter-year`, `letter-promise`). Zero `REPLACE ME`
+  left anywhere in script.ts. Joke modules dropped (no material, and empty cards are worse).
+- Numbers module uses real values including today's 2 tattoos and 5 stops.
+- **Fixed:** the stage rendered an `<audio>` for a non-existent ambient track, so every
+  takeover 404d on her phone and showed a dead mute button. Now behind `AMBIENT_SRC`, null
+  until a file exists. To add music: drop `public/anniversary/audio/ambient.mp3` and set
+  that constant.
+- E2E `probe-day.mjs` **12/12** on a local prod build: morning takeover fires with no input,
+  seal opens on a real 2s hold, photo and voice modules land with the real jpg decoded and
+  the real mp3 loaded, zero broken asset requests.
+- Deploy verified live: all 15 assets return 200 with exact byte counts, content strings
+  present in shared chunk `953-*.js`, and `ambient.mp3` is absent from the bundle.
+
+### Environment notes from this session
+- Workspace moved to **pnpm**. `netlify.toml` now runs `pnpm run build` and it **works on
+  Netlify** (verified: deploy landed ~2 min after push). Use `pnpm exec next start -p 3001`
+  locally, NOT `pnpm start -- -p 3001` (pnpm forwards the `--` and next reads `-p` as a
+  directory).
+- `playwright-core` was a phantom npm dependency and is NOT reachable under pnpm. The probe
+  now lives in the scratchpad with its own `pnpm add playwright-core`. Do not add it to the
+  app's package.json.
+- The disk filled completely mid-session and wiped the scratchpad plus the Playwright
+  browser cache. Reinstall with `pnpm exec playwright-core install chromium` and update the
+  chromium-XXXX path in the probe.
+
+### Did Hermi see the accidental trigger? No.
+Panda tapped into the anniversary flow on prod on 2026-07-30 and worried she was notified.
+The whole feature has **exactly one** notification path, `pingPartnerDevice` at
+`DirectorPanel.tsx:140` (the explicit "Ping her phone" button). Nothing else writes to the
+DB or notifies. Opening the card or the panel does nothing to her device; firing a module is
+an ephemeral broadcast that only lands if her app is open and joined at that second. Nothing
+is consumed either: the one-shot flag is only ever set on HER device.
+
 ### PANDA MUST DO (in priority order)
 1. **TONIGHT, BEFORE MIDNIGHT: get Hermi to open the app once.** She has not opened it since
    July 12, so her iPhone is running a stale bundle and none of this reaches her until it
    loads the new code. Any pretext works (nudge her about a movie). Then have her do
    **Profile > Turn on alerts** (she still has 0 push subscriptions) so "Ping her phone" works.
    **No amount of code covers this step.**
-2. **Drop the content:** photos into `public/anniversary/photos/`, voice notes into
-   `public/anniversary/audio/` (note-morning / note-mid / note-night, plus optional
-   ambient.mp3 for background music), and the letters/jokes/numbers text anywhere readable.
-   Then every `REPLACE ME` in `lib/anniversary/script.ts` gets filled in and redeployed.
-   Photo modules currently point at `/couple.jpg` so nothing 404s; voice notes point at their
-   real paths on purpose, so a missing recording is obvious in rehearsal.
+2. ~~Drop the content.~~ **DONE 2026-07-31**, see the section above.
 3. **Dress rehearsal** before sleeping: open `/anniversary` on his phone against her phone (or
    a second browser), fire a few modules, confirm they land.
 4. Test Pulse on her actual iPhone at some point today. The taptic path cannot be verified
