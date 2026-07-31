@@ -18,7 +18,7 @@ Fun project (call the user **Panda**). Couples' movie/series discovery platform 
 - `app/` routes: `/` (Tonight), `/discover`, `/watchlist`, `/us`, `/profile`. `providers.tsx` mounts StoreProvider, WelcomeGate, WatchParty, BottomNav, AssistantButton, MatchOverlay, TitleSheetHost.
 
 ## Run / verify
-`npm run dev` (usually port 3001; confirm via page title). `npm run build` for type-check. NEVER run build while dev is running (shared `.next`).
+`pnpm run dev` (usually port 3001; confirm via page title). `pnpm run build` for type-check. NEVER run build while dev is running (shared `.next`).
 
 ## Notifications: the follow-along rule (Panda's standing request, 2026-07-24)
 Every action one partner takes that the other would want to know about MUST call

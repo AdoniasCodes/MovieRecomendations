@@ -37,6 +37,13 @@ import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const HEARTS = Array.from({ length: 14 });
+/**
+ * Background music. null until a track actually exists: rendering an <audio>
+ * for a file that is not there 404s on her phone every time the stage opens
+ * and puts a mute button on screen that can never do anything. Drop a file at
+ * public/anniversary/audio/ambient.mp3 and set this to that path to enable it.
+ */
+const AMBIENT_SRC: string | null = null;
 /** the letter the morning banner walks forward to */
 const MORNING_FOLLOW_UP = "letter-morning";
 /** long-press duration on the hidden escape dot */
@@ -249,14 +256,16 @@ export function AnniversaryStage() {
             <span className="mx-auto block h-1.5 w-1.5 rounded-full bg-white" />
           </button>
 
-          {/* mute toggle */}
-          <button
-            onClick={toggleMute}
-            aria-label={muted ? "Play music" : "Mute music"}
-            className="glass fixed bottom-4 left-4 z-20 rounded-full p-2.5 text-white/50"
-          >
-            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </button>
+          {/* mute toggle, only when there is actually a track to mute */}
+          {AMBIENT_SRC && (
+            <button
+              onClick={toggleMute}
+              aria-label={muted ? "Play music" : "Mute music"}
+              className="glass fixed bottom-4 left-4 z-20 rounded-full p-2.5 text-white/50"
+            >
+              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </button>
+          )}
 
           {/* content */}
           <div className="relative z-10 mx-auto flex min-h-full w-full max-w-md flex-col justify-center px-6 py-16">
@@ -334,7 +343,9 @@ export function AnniversaryStage() {
             </AnimatePresence>
           </div>
 
-          <audio ref={ambient} src="/anniversary/audio/ambient.mp3" loop preload="none" className="hidden" />
+          {AMBIENT_SRC && (
+            <audio ref={ambient} src={AMBIENT_SRC} loop preload="none" className="hidden" />
+          )}
         </motion.div>
       )}
     </AnimatePresence>

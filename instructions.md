@@ -139,7 +139,7 @@ touching the reducer or any UI:
 - Icons: `lucide-react`. Emoji used liberally for warmth (🐼 / 💞).
 
 ## 8. Verify before declaring done
-- `npm run build` (type-checks the whole app) — fix all TS errors.
+- `pnpm run build` (type-checks the whole app) — fix all TS errors.
 - Sanity-check the dev server renders the touched screens.
 - Don't claim a feature works if it's only partially wired — say what's stubbed.
 
@@ -183,7 +183,7 @@ wrap the builder in `run()` or await it. This bug shipped invisible for weeks be
 optimistic local dispatch made everything LOOK like it worked on the acting device.
 
 ## §8b. Two-user E2E verification (the only test that catches couple-loop bugs)
-Node + playwright-core against a LOCAL PRODUCTION build (`npm run build` then `npm start`;
+Node + playwright-core against a LOCAL PRODUCTION build (`pnpm run build` then `npm start`;
 prod activates the service worker; never build while dev runs). Chromium binary from the
 playwright cache (`~/Library/Caches/ms-playwright/chromium-*/...`). Pattern (see Phase 9):
 - Two browser contexts, sign in both accounts via the gate (Get in, name, PIN 9009).
@@ -281,7 +281,7 @@ and no Netlify CLI auth exists locally. After pushing to main, wait 2-4 min then
 and grep the HTML for content unique to the new change.
 
 **Client-code changes never show in the HTML — grep the deployed CHUNK JS instead** (proven
-2026-07-25): after `npm run build` locally, find which chunk holds your new string
+2026-07-25): after `pnpm run build` locally, find which chunk holds your new string
 (`grep -rl "<unique string>" .next/static/chunks/`), then fetch that same chunk path from the
 live site and grep it. Shared chunks (e.g. `695-*.js` for lib/store.tsx) keep IDENTICAL hashed
 names between local and Netlify builds; the layout chunk hash DIFFERS (env inlining), so for

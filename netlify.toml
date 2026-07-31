@@ -2,7 +2,7 @@
 # The official Next.js runtime handles SSR + the /api/* serverless functions.
 
 [build]
-  command = "npm run build"
+  command = "pnpm run build"
 
 [build.environment]
   NODE_VERSION = "22"

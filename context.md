@@ -48,8 +48,8 @@ lean toward cerebral crime, wholesome, and international titles.
 - **Next.js (App Router) · TypeScript · Tailwind · Framer Motion.** Mobile-first centered
   column (`max-w-md`). Dark glass design system, violet→magenta accent (`bg-accent-gradient`).
 - **State:** everything runs on **mock data + `localStorage`** (no Supabase/keys yet).
-- **Dev server:** `npm run dev` → currently **http://localhost:3001/** (Next picks next free
-  port; 3000 was taken by another project). `npm run build` for type-check.
+- **Dev server:** `pnpm run dev` → currently **http://localhost:3001/** (Next picks next free
+  port; 3000 was taken by another project). `pnpm run build` for type-check.
 
 ### Where things live (the seams)
 - `lib/types.ts` — all shared types.
@@ -251,7 +251,7 @@ Fully client-side and isolated: `lib/afterdark/engine.ts` (pure state machine), 
   parties, rough stuff only at heat 4. Consent UX: gate screen on every entry, blocking Pause
   check-in modal, 3 skips per player, heat rises only via a both-hold-3-seconds button.
 - No store.tsx involvement, no Supabase, no localStorage state (a night is ephemeral on purpose).
-- Verified: clean `npm run build`; 2000-game simulation (120k draws) with 0 constraint violations.
+- Verified: clean `pnpm run build`; 2000-game simulation (120k draws) with 0 constraint violations.
 
 ## 5f. Phase 8 — "Fix the couple loop" (SHIPPED 2026-07-09)
 

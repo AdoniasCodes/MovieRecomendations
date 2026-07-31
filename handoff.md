@@ -66,7 +66,7 @@ Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in com
    from this machine. If it feels like nothing, use Swap so his Android receives.
 
 ### Verification done
-- `npm run build` green. Two-user Playwright probe **17/17** on a local prod build:
+- `pnpm run build` green. Two-user Playwright probe **17/17** on a local prod build:
   lockout (card hidden + URL locked, no panel leak), module lands and acks, reload resumes
   mid-story, channel re-acks after reconnect, holding screen, release, pulse drives a real
   motor, auto-stop when hidden, her Stop wins, role swap flips both sides.
@@ -379,3 +379,9 @@ card, Movie/Series filter, shared AI chat all shipped and deployed from main.
 - Credentials: `.env.local` (Gemini, Supabase, TMDB) and `.env.netlify.local`. Paths only, never
   values, per workspace rules. The Supabase DB password is NOT stored on this machine.
 - Accounts: panda@amoremovies.app / hermi@amoremovies.app, PIN 9009, couple AM-427CD.
+
+## 2026-07-30 — moved from npm to pnpm
+This project now uses **pnpm**. Use `pnpm install` / `pnpm dev` / `pnpm build`, never npm.
+Lockfile is `pnpm-lock.yaml` (converted from `package-lock.json` with `pnpm import`, so
+dependency versions are unchanged). Full record + rollback steps:
+`/Users/eyoel/vibecoding/PNPM-MIGRATION-2026-07-30.md`.

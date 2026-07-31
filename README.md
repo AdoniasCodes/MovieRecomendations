@@ -12,8 +12,8 @@ Tinder-for-movies × Letterboxd × Apple TV+ polish — a shared entertainment h
 
 ## Run it
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 # open the printed URL (http://localhost:3000, or next free port)
 ```
 Everything runs on seeded mock data — no accounts or API keys needed. State persists in `localStorage`.
