@@ -119,7 +119,7 @@ export type AnniversaryModule =
 
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
   opening: "The open",
-  letters: "Letters and voice",
+  letters: "Your voice",
   photos: "Us, in pictures",
   numbers: "Numbers",
   day: "The day",
@@ -136,51 +136,8 @@ export const MODULES: AnniversaryModule[] = [
     headline: "Happy Anniversary",
     sub: "One year of you and me.",
   },
-  {
-    id: "letter-morning",
-    kind: "message",
-    group: "opening",
-    label: "Letter: good morning",
-    seal: "Open this first",
-    title: "Good morning, my love",
-    body: [
-      "One year ago today, everything got better. I am not being dramatic, I am being accurate.",
-      "I built this whole thing inside our app because I wanted today to start the second you opened your phone, before I even got to see your face.",
-      "Today is yours. I planned all of it. You do not have to think about a single thing.",
-    ],
-    signoff: "Yours, always",
-  },
 
   /* ------------------------------------------------------------- letters */
-  {
-    id: "letter-year",
-    kind: "message",
-    group: "letters",
-    label: "Letter: the year we had",
-    seal: "About this year",
-    title: "What this year actually was",
-    body: [
-      "A year is long enough to stop performing. You have seen me tired, broke, stubborn, wrong, and in the middle of things I did not know how to fix. You did not leave. You did not even flinch.",
-      "That is the part nobody sees from the outside. Everyone sees the photos. Nobody sees the ordinary Tuesdays, the arguments we got through, the nights one of us was quiet and the other one just stayed.",
-      "People talk about love like it is a feeling that happens to you. This year taught me it is a decision you make again and again, and I have made it every single day without once having to think about it.",
-      "You are the best thing that has ever happened to me. I am not saying that because it is today. I am saying it because it is true, and today just gives me an excuse.",
-    ],
-    signoff: "Every word of it",
-  },
-  {
-    id: "letter-promise",
-    kind: "message",
-    group: "letters",
-    label: "Letter: the promise",
-    seal: "Hold this one down",
-    title: "Going into year two",
-    body: [
-      "I am not going to promise you a perfect year. Nobody can do that and you would not believe me anyway.",
-      "Here is what I can promise. I will keep choosing you on the days it is easy and on the days it is not. I will keep telling you things instead of going quiet. And whatever comes, you will not be facing it on your own.",
-      "Year one was us finding out. Year two is us building.",
-    ],
-    signoff: "I mean it",
-  },
   // The three recordings, numbered rather than tied to a time of day, because
   // Panda picks the moment for each one.
   {

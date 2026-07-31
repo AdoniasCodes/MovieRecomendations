@@ -28,9 +28,10 @@ import {
   writeStageCache,
 } from "@/lib/anniversary/channel";
 import { isAnniversaryDay } from "@/lib/anniversary/date";
-import { OPENING_MODULE_ID, moduleById } from "@/lib/anniversary/script";
+import { MODULES, OPENING_MODULE_ID, moduleById } from "@/lib/anniversary/script";
 import { useAuth } from "@/lib/auth";
 import { openBroadcast, type BroadcastLink } from "@/lib/broadcast";
+import { useAnniversaryDemo } from "@/lib/anniversary/demo";
 import { identityFromEmail, useWhoami } from "@/lib/identity";
 import { AnimatePresence, motion } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
@@ -43,9 +44,7 @@ const HEARTS = Array.from({ length: 14 });
  * and puts a mute button on screen that can never do anything. Drop a file at
  * public/anniversary/audio/ambient.mp3 and set this to that path to enable it.
  */
-const AMBIENT_SRC: string | null = null;
-/** the letter the morning banner walks forward to */
-const MORNING_FOLLOW_UP = "letter-morning";
+const AMBIENT_SRC: string | null = "/anniversary/audio/ambient.mp3";
 /** long-press duration on the hidden escape dot */
 const ESCAPE_MS = 1500;
 
@@ -56,11 +55,12 @@ export function AnniversaryStage() {
   // the morning takeover must fire on HER phone and only hers, so it keys off
   // the signed-in account rather than the local display toggle
   const realWho = auth.configured ? identityFromEmail(auth.session?.user.email) : who;
+  const demo = useAnniversaryDemo();
 
   const [active, setActive] = useState(false);
   const [moduleId, setModuleId] = useState<string | null>(null);
   const [blanked, setBlanked] = useState(false);
-  /** true while she is walking the morning pair herself */
+  /** true while she is walking it herself: the morning open, or the demo */
   const [selfPaced, setSelfPaced] = useState(false);
   const [muted, setMuted] = useState(true);
 
@@ -73,7 +73,16 @@ export function AnniversaryStage() {
 
   /* ------------------------------------------------- the morning surprise */
   useEffect(() => {
-    if (realWho !== "hermi" || !isAnniversaryDay()) return;
+    if (realWho !== "hermi") return;
+    if (demo) {
+      // Demo never checks the date and never writes the once-per-device flag,
+      // so testing on Panda's phone cannot consume her real first open.
+      setActive(true);
+      setSelfPaced(true);
+      setModuleId(OPENING_MODULE_ID);
+      return;
+    }
+    if (!isAnniversaryDay()) return;
     try {
       if (window.localStorage.getItem(STAGE_OPENED_KEY)) return;
       window.localStorage.setItem(STAGE_OPENED_KEY, String(Date.now()));
@@ -86,7 +95,7 @@ export function AnniversaryStage() {
     try {
       navigator.vibrate?.([60, 40, 60, 40, 180]);
     } catch {}
-  }, [realWho]);
+  }, [realWho, demo]);
 
   /* ---------------------------------------- restore after an accidental reload */
   useEffect(() => {
@@ -203,6 +212,7 @@ export function AnniversaryStage() {
   useEffect(() => () => cancelEscape(), []);
 
   const current = moduleId ? moduleById(moduleId) : null;
+  const demoIndex = moduleId ? MODULES.findIndex((m) => m.id === moduleId) : -1;
 
   return (
     <AnimatePresence>
@@ -244,6 +254,26 @@ export function AnniversaryStage() {
             })}
           </div>
 
+          {/* Demo is loudly labelled: the one thing worse than not testing is
+              mistaking a test run for the real thing. */}
+          {demo && (
+            <div className="fixed left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2">
+              <span className="rounded-full bg-amber-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-200 ring-1 ring-amber-400/30">
+                Demo
+              </span>
+              <button
+                onClick={() => {
+                  setActive(false);
+                  setModuleId(null);
+                  setSelfPaced(false);
+                }}
+                className="glass rounded-full px-3 py-1 text-[10px] font-bold text-white/60"
+              >
+                Exit
+              </button>
+            </div>
+          )}
+
           {/* the hidden way out */}
           <button
             aria-label="Close"
@@ -280,16 +310,35 @@ export function AnniversaryStage() {
                 >
                   <ModuleView module={current} />
 
-                  {/* the morning pair is the only part she walks herself */}
+                  {/* She only ever walks it herself in two cases: the morning
+                      open (banner, then close), and the demo (everything). */}
                   {selfPaced && (
                     <div className="mt-10 space-y-2">
-                      {current.id === OPENING_MODULE_ID ? (
-                        <button
-                          onClick={() => setModuleId(MORNING_FOLLOW_UP)}
-                          className="w-full rounded-2xl bg-accent-gradient py-4 text-base font-bold shadow-glow transition active:scale-[0.98]"
-                        >
-                          There is more 💌
-                        </button>
+                      {demo ? (
+                        <>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setModuleId(MODULES[Math.max(0, demoIndex - 1)].id)}
+                              disabled={demoIndex <= 0}
+                              className="glass flex-1 rounded-2xl py-3.5 text-sm font-bold disabled:opacity-30"
+                            >
+                              Back
+                            </button>
+                            <button
+                              onClick={() =>
+                                setModuleId(MODULES[Math.min(MODULES.length - 1, demoIndex + 1)].id)
+                              }
+                              disabled={demoIndex >= MODULES.length - 1}
+                              className="flex-1 rounded-2xl bg-accent-gradient py-3.5 text-sm font-bold shadow-glow disabled:opacity-40"
+                            >
+                              Next
+                            </button>
+                          </div>
+                          <p className="text-center text-[11px] text-white/30">
+                            {demoIndex + 1} of {MODULES.length}. On the day she sees these one at a
+                            time, whenever you send them.
+                          </p>
+                        </>
                       ) : (
                         <>
                           <p className="text-center text-xs leading-relaxed text-white/40">

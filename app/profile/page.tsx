@@ -5,12 +5,15 @@ import { EnableAlerts } from "@/components/notifications/EnableAlerts";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { anniversaryPhase, type AnniversaryPhase } from "@/lib/anniversary/date";
+import { setAnniversaryDemo, useAnniversaryDemo } from "@/lib/anniversary/demo";
+import { MODULES } from "@/lib/anniversary/script";
 import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/cn";
 import { identityFromEmail, useWhoami } from "@/lib/identity";
 import { TASTE_AMORE, TASTE_SEED, getTitle } from "@/lib/mock-data";
 import { useStore } from "@/lib/store";
 import type { Title } from "@/lib/types";
-import { Flame, Heart, RefreshCw } from "lucide-react";
+import { Flame, FlaskConical, Heart, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -31,6 +34,7 @@ export default function ProfilePage() {
   // identity from the SESSION, not the display toggle (which reads "panda" on a
   // cold load), so the card can never flash into view on her phone
   const realWho = auth.configured ? identityFromEmail(auth.session?.user.email) : who;
+  const demo = useAnniversaryDemo();
   const showAnniversary =
     phase !== null && !(auth.configured && auth.loading) && (phase === "after" || realWho === "panda");
 
@@ -88,6 +92,58 @@ export default function ProfilePage() {
             </span>
           </span>
         </Link>
+      )}
+
+      {/* demo switch: Panda only, and only before the day is over */}
+      {showAnniversary && phase !== "after" && (
+        <div
+          className={cn(
+            "space-y-3 rounded-2xl p-4 ring-1 transition",
+            demo ? "bg-amber-500/10 ring-amber-400/30" : "glass ring-white/10"
+          )}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <FlaskConical className={cn("h-4 w-4", demo ? "text-amber-300" : "text-white/50")} />
+                Demo the surprise
+              </p>
+              <p className="mt-1 text-xs text-white/45">
+                Watch it exactly as {store.partner.name} will, on this phone.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={demo}
+              aria-label="Demo mode"
+              onClick={() => setAnniversaryDemo(!demo)}
+              className={cn(
+                "relative h-7 w-12 shrink-0 rounded-full transition",
+                demo ? "bg-amber-500" : "bg-white/15"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-1 h-5 w-5 rounded-full bg-white transition-all",
+                  demo ? "left-6" : "left-1"
+                )}
+              />
+            </button>
+          </div>
+          {demo ? (
+            <p className="rounded-xl bg-black/25 p-3 text-[11px] leading-relaxed text-amber-100/80">
+              Now switch to {store.partner.name} with &quot;Switch user&quot; below. Her side opens
+              by itself and you can step through all {MODULES.length} screens. Nothing you do
+              touches her phone, and this does not use up her real first open. Come back here and
+              turn it off when you are done.
+            </p>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-white/35">
+              Turn this on, switch to her account on this phone, and you will see the whole thing
+              end to end. Off is the real behaviour.
+            </p>
+          )}
+        </div>
       )}
 
       {/* after dark */}
