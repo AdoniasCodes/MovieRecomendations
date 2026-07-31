@@ -117,6 +117,25 @@ Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in com
 - E2E **29/29** across three suites in the scratchpad: `probe-pulse.mjs` (5), `probe-demo.mjs`
   (13), `probe-day.mjs` (11).
 
+### Rehearsal cleanup (2026-07-31, commit 2631ce2, live) READY FOR THE REAL THING
+- Panda rehearsed with his phone as himself and his PC signed in as Hermi, confirmed it all
+  works, and turned demo mode off.
+- **Verified against the live database as her: 0 notifications, 0 activity rows, 0 unread,
+  0 push subscriptions.** The anniversary feature writes nothing to the DB by design and that
+  now has evidence behind it, so there was no server-side history to remove.
+- **"Clear the rehearsal and start clean"** button added to the bottom of the director panel
+  (blocking confirm, then a confirmation with an OK button, per the workspace rule). It clears
+  the running order (`amore-movies/anniv-plan`), resets every module to unsent, and broadcasts
+  `end`, which ALSO releases and clears the cached screen on any other device still signed in
+  as her. That last part matters: a second logged-in device keeps answering the panel, and its
+  ack can masquerade as her real phone in the "on her screen" indicator.
+- **Known trap for the night:** if the PC stays signed in as Hermi it will receive every module
+  and ack it, so the panel may show "Landed" from the PC rather than her phone. Sign it out or
+  close that tab before the real run.
+- E2E **39/39** across four suites: `probe-pulse.mjs` (5), `probe-demo.mjs` (13),
+  `probe-day.mjs` (11), `probe-reset.mjs` (10, proves the plan is erased, the other device
+  releases and drops its cache, and the next thing sent is numbered 1 again).
+
 ### Environment notes from this session
 - Workspace moved to **pnpm**. `netlify.toml` now runs `pnpm run build` and it **works on
   Netlify** (verified: deploy landed ~2 min after push). Use `pnpm exec next start -p 3001`
