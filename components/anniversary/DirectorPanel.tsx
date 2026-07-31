@@ -32,6 +32,7 @@ import {
   ChevronRight,
   Eye,
   Lock,
+  RotateCcw,
   Square,
   Wifi,
   WifiOff,
@@ -67,6 +68,8 @@ export function DirectorPanel() {
   const [preview, setPreview] = useState<AnniversaryModule | null>(null);
   const [pinged, setPinged] = useState(false);
   const [soloIndex, setSoloIndex] = useState(0);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
 
   const [blanked, setBlanked] = useState(false);
   /** the running order: itinerary ids in the order he actually sent them, which
@@ -162,6 +165,30 @@ export function DirectorPanel() {
     setCurrentId(null);
     setBlanked(false);
     linkRef.current?.send(STAGE_EVENTS.end, {});
+  };
+
+  /**
+   * Wipe the rehearsal. The database never held any of this, so "history" is
+   * entirely local: the running order, which modules show as already sent, and
+   * whatever any logged-in device still has on screen. The broadcast `end` is
+   * the important part, because it also clears the cached stage on any OTHER
+   * device still signed in as her (a laptop used for testing, for instance).
+   */
+  const doReset = () => {
+    setPlan([]);
+    planRef.current = [];
+    setSent(new Set());
+    setCurrentId(null);
+    setBlanked(false);
+    setHerShowing(undefined);
+    try {
+      window.localStorage.removeItem(PLAN_KEY);
+    } catch {
+      /* nothing to remove is a fine outcome */
+    }
+    linkRef.current?.send(STAGE_EVENTS.end, {});
+    setConfirmReset(false);
+    setResetDone(true);
   };
 
   const ping = async () => {
@@ -437,6 +464,74 @@ export function DirectorPanel() {
       >
         Or walk through it all on this phone
       </button>
+
+      <button
+        onClick={() => setConfirmReset(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 p-4 text-center text-xs font-bold text-white/45"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+        Clear the rehearsal and start clean
+      </button>
+
+      {/* blocking confirm, never a toast (workspace rule) */}
+      <AnimatePresence>
+        {confirmReset && (
+          <motion.div
+            className="fixed inset-0 z-[96] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="glass-strong w-full max-w-sm space-y-4 rounded-3xl bg-surface p-6">
+              <h3 className="text-lg font-black">Clear the rehearsal?</h3>
+              <p className="text-sm leading-relaxed text-white/60">
+                Forgets the running order, marks everything as unsent, and releases the screen on
+                any device still signed in as {her.name}. Nothing in the content changes and
+                nothing is deleted from your account.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmReset(false)}
+                  className="glass flex-1 rounded-2xl py-3.5 text-sm font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={doReset}
+                  className="flex-1 rounded-2xl bg-accent-gradient py-3.5 text-sm font-bold shadow-glow"
+                >
+                  Clear it
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {resetDone && (
+          <motion.div
+            className="fixed inset-0 z-[96] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="glass-strong w-full max-w-sm space-y-4 rounded-3xl bg-surface p-6 text-center">
+              <div className="text-4xl">✨</div>
+              <h3 className="text-lg font-black">All clean.</h3>
+              <p className="text-sm leading-relaxed text-white/60">
+                The order is empty and the first thing you send tonight will be step one.
+              </p>
+              <button
+                onClick={() => setResetDone(false)}
+                className="w-full rounded-2xl bg-accent-gradient py-3.5 text-sm font-bold shadow-glow"
+              >
+                OK
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* local preview, so he always knows what he is about to send */}
       <AnimatePresence>
