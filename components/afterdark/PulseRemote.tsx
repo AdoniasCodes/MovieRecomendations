@@ -479,6 +479,31 @@ export function PulseRemote({ onExit }: { onExit: () => void }) {
         <TopBar showSwap />
       )}
 
+      {/* The controller phone NEVER buzzes itself, so with nobody on the other
+          end this screen does nothing and reads as broken. Say so plainly and
+          offer the one-tap way to actually feel it. */}
+      {!solo && !partnerHere && (
+        <div className="space-y-3 rounded-2xl bg-amber-500/10 p-4 ring-1 ring-amber-400/25">
+          <p className="text-sm font-bold text-amber-200">
+            Nothing will buzz yet.
+          </p>
+          <p className="text-xs leading-relaxed text-amber-100/70">
+            This phone is the remote, so it stays still on purpose. {her.name} has to open After
+            Dark and tap Pulse, then &quot;I am holding it&quot;, on her own phone. Her app has to
+            stay open with the screen on.
+          </p>
+          <button
+            onClick={() => {
+              tapOnce();
+              setRole("solo");
+            }}
+            className="w-full rounded-xl bg-amber-500/20 py-2.5 text-xs font-bold text-amber-100 ring-1 ring-amber-400/30 transition active:scale-[0.98]"
+          >
+            Or feel it on this phone instead
+          </button>
+        </div>
+      )}
+
       <div className="space-y-1">
         <h1 className="text-2xl font-black tracking-tight">
           {solo ? "Feel it yourself" : `You have the remote`}

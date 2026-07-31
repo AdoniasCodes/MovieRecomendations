@@ -31,6 +31,7 @@ import { isAnniversaryDay } from "@/lib/anniversary/date";
 import { MODULES, OPENING_MODULE_ID, moduleById } from "@/lib/anniversary/script";
 import { useAuth } from "@/lib/auth";
 import { openBroadcast, type BroadcastLink } from "@/lib/broadcast";
+import { onVoicePlaying } from "@/lib/anniversary/audio-bus";
 import { useAnniversaryDemo } from "@/lib/anniversary/demo";
 import { identityFromEmail, useWhoami } from "@/lib/identity";
 import { AnimatePresence, motion } from "framer-motion";
@@ -47,6 +48,8 @@ const HEARTS = Array.from({ length: 14 });
 const AMBIENT_SRC: string | null = "/anniversary/audio/ambient.mp3";
 /** long-press duration on the hidden escape dot */
 const ESCAPE_MS = 1500;
+/** the ambient track is a real song, so it sits well back in the mix */
+const AMBIENT_VOLUME = 0.2;
 
 export function AnniversaryStage() {
   const auth = useAuth();
@@ -63,6 +66,8 @@ export function AnniversaryStage() {
   /** true while she is walking it herself: the morning open, or the demo */
   const [selfPaced, setSelfPaced] = useState(false);
   const [muted, setMuted] = useState(true);
+  /** ordered itinerary ids he has sent, which is where step numbers come from */
+  const [plan, setPlan] = useState<string[]>([]);
 
   const linkRef = useRef<BroadcastLink | null>(null);
   const ambient = useRef<HTMLAudioElement | null>(null);
@@ -105,6 +110,7 @@ export function AnniversaryStage() {
       setActive(true);
       setModuleId(cached.moduleId);
       setBlanked(cached.blanked);
+      if (cached.plan) setPlan(cached.plan);
     }
   }, []);
 
@@ -112,13 +118,15 @@ export function AnniversaryStage() {
   useEffect(() => {
     if (!coupleId) return;
 
-    const show = (id: string) => {
+    const show = (id: string, nextPlan?: unknown) => {
       if (!moduleById(id)) return;
+      const orderedPlan = Array.isArray(nextPlan) ? (nextPlan as string[]) : undefined;
       setSelfPaced(false);
       setBlanked(false);
       setActive(true);
       setModuleId(id);
-      writeStageCache(id, false);
+      if (orderedPlan) setPlan(orderedPlan);
+      writeStageCache(id, false, orderedPlan);
       linkRef.current?.send(STAGE_EVENTS.ack, { moduleId: id });
       try {
         navigator.vibrate?.(45);
@@ -136,7 +144,7 @@ export function AnniversaryStage() {
 
     const link = openBroadcast(stageTopic(coupleId), {
       [STAGE_EVENTS.show]: (p) => {
-        if (typeof p.moduleId === "string") show(p.moduleId);
+        if (typeof p.moduleId === "string") show(p.moduleId, p.plan);
       },
       [STAGE_EVENTS.blank]: hold,
       [STAGE_EVENTS.end]: () => {
@@ -154,7 +162,7 @@ export function AnniversaryStage() {
       // This is the only way to recover anything he sent while this device's
       // channel was down, so it has to cover the holding screen too.
       [STAGE_EVENTS.state]: (p) => {
-        if (typeof p.moduleId === "string") show(p.moduleId);
+        if (typeof p.moduleId === "string") show(p.moduleId, p.plan);
         else if (p.blanked === true) hold();
       },
     });
@@ -169,11 +177,15 @@ export function AnniversaryStage() {
   }, [coupleId]);
 
   /* ------------------------------------------------------- ambient sound */
+  // If she deliberately mutes, nothing may start it again. Anything else (a new
+  // module arriving, her first tap) is allowed to.
+  const mutedByHer = useRef(false);
+
   const unlockAudio = useCallback(() => {
     const el = ambient.current;
-    if (!el || !muted) return;
+    if (!el || !muted || mutedByHer.current) return;
     // iOS will not start audio without a gesture, so the first touch does it
-    el.volume = 0.35;
+    el.volume = AMBIENT_VOLUME;
     void el.play().then(() => setMuted(false)).catch(() => {
       /* no track yet, or refused: silence is fine */
     });
@@ -183,13 +195,38 @@ export function AnniversaryStage() {
     const el = ambient.current;
     if (!el) return;
     if (muted) {
-      el.volume = 0.35;
+      mutedByHer.current = false;
+      el.volume = AMBIENT_VOLUME;
       void el.play().then(() => setMuted(false)).catch(() => {});
     } else {
+      mutedByHer.current = true;
       el.pause();
       setMuted(true);
     }
   };
+
+  // His voice always wins over the song.
+  useEffect(
+    () =>
+      onVoicePlaying((voicePlaying) => {
+        const el = ambient.current;
+        if (!el) return;
+        if (voicePlaying) {
+          el.pause();
+        } else if (!mutedByHer.current && !muted) {
+          void el.play().catch(() => {});
+        }
+      }),
+    [muted]
+  );
+
+  // Every new screen is another chance to get the music going, which matters
+  // for the numbers slideshow in particular. Before any gesture the play()
+  // simply rejects and we try again on the next one.
+  useEffect(() => {
+    if (!moduleId) return;
+    unlockAudio();
+  }, [moduleId, unlockAudio]);
 
   /* --------------------------------------------------------- escape hatch */
   // Deliberately hard to find: a takeover she can dismiss by accident is not a
@@ -308,7 +345,7 @@ export function AnniversaryStage() {
                   exit={{ opacity: 0, y: -16 }}
                   transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <ModuleView module={current} />
+                  <ModuleView module={current} plan={plan} />
 
                   {/* She only ever walks it herself in two cases: the morning
                       open (banner, then close), and the demo (everything). */}

@@ -11,33 +11,49 @@
 
 import { cn } from "@/lib/cn";
 import { daysTogether, monthsTogether } from "@/lib/anniversary/date";
-import type {
-  AnniversaryModule,
-  BannerModule,
-  FinaleModule,
-  ItineraryIcon,
-  ItineraryModule,
-  JokeModule,
-  MessageModule,
-  NumbersModule,
-  PhotoGuessModule,
-  PhotoModule,
-  VoiceModule,
+import { setVoicePlaying } from "@/lib/anniversary/audio-bus";
+import {
+  MODULES,
+  moduleById,
+  type AnniversaryModule,
+  type BannerModule,
+  type FinaleModule,
+  type ItineraryIcon,
+  type ItineraryModule,
+  type JokeModule,
+  type MessageModule,
+  type NumbersModule,
+  type PhotoModule,
+  type QuestionsModule,
+  type VoiceModule,
 } from "@/lib/anniversary/script";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Bath,
   Cake,
+  Camera,
+  Car,
   Cigarette,
+  Clapperboard,
+  Coffee,
+  Footprints,
+  Gamepad2,
   Gift,
   Heart,
+  IceCreamCone,
   ImageOff,
   Martini,
   Mic,
   Moon,
+  Mountain,
+  Music,
   Pause,
   Play,
+  ShoppingBag,
   Sparkles,
   Syringe,
+  Target,
+  UtensilsCrossed,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -282,10 +298,17 @@ function VoiceView({ m }: { m: VoiceModule }) {
         ref={audio}
         src={m.src}
         preload="metadata"
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
+        onPlay={() => {
+          setPlaying(true);
+          setVoicePlaying(true); // pauses the background song
+        }}
+        onPause={() => {
+          setPlaying(false);
+          setVoicePlaying(false);
+        }}
         onEnded={() => {
           setPlaying(false);
+          setVoicePlaying(false);
           setProgress(1);
         }}
         onError={() => setFailed(true)}
@@ -337,84 +360,94 @@ function PhotoView({ m }: { m: PhotoModule }) {
   );
 }
 
-function PhotoGuessView({ m }: { m: PhotoGuessModule }) {
-  const [picked, setPicked] = useState<number | null>(null);
-  const answered = picked !== null;
-  const correct = picked === m.answerIndex;
-
+function QuestionsView({ m }: { m: QuestionsModule }) {
+  const [i, setI] = useState(0);
+  const last = i >= m.prompts.length - 1;
   return (
-    <div className="space-y-5">
-      <Title>{m.question}</Title>
-
-      <motion.div className="relative overflow-hidden rounded-3xl" layout>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={m.src}
-          alt="A photo of us, waiting to be guessed"
-          className={cn(
-            "h-auto w-full object-cover transition-all duration-700",
-            answered ? "blur-0 scale-100" : "scale-110 blur-2xl"
-          )}
-        />
-        {!answered && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-            <Sparkles className="h-10 w-10 text-white/60" />
-          </div>
-        )}
-      </motion.div>
-
-      <div className="space-y-2">
-        {m.options.map((opt, i) => {
-          const isAnswer = i === m.answerIndex;
-          const state = !answered ? "idle" : isAnswer ? "right" : i === picked ? "wrong" : "dim";
-          return (
-            <button
-              key={i}
-              disabled={answered}
-              onClick={() => {
-                setPicked(i);
-                try {
-                  navigator.vibrate?.(i === m.answerIndex ? [40, 40, 90] : 30);
-                } catch {}
-              }}
-              className={cn(
-                "w-full rounded-2xl p-4 text-left text-sm font-semibold transition active:scale-[0.98]",
-                state === "idle" && "glass",
-                state === "right" && "bg-gradient-to-r from-emerald-600/80 to-emerald-500/60 ring-1 ring-emerald-300/40",
-                state === "wrong" && "bg-white/5 text-white/40 line-through",
-                state === "dim" && "bg-white/[0.02] text-white/25"
-              )}
-            >
-              {opt}
-            </button>
-          );
-        })}
+    <div className="space-y-6">
+      <div className="space-y-2 text-center">
+        <Title>{m.title}</Title>
+        {m.intro && <p className="text-xs leading-relaxed text-white/45">{m.intro}</p>}
       </div>
 
-      <AnimatePresence>
-        {answered && (
-          <motion.div
-            className="space-y-2 text-center"
-            initial={{ opacity: 0, y: 10 }}
+      <div className="flex min-h-[190px] items-center">
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={i}
+            className="w-full text-center text-2xl font-bold leading-snug"
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.35 }}
           >
-            <p className="text-sm font-black text-magenta">
-              {correct ? "You remembered 💞" : "Close, but no."}
-            </p>
-            <p className="text-sm leading-relaxed text-white/70">{m.reveal}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {m.prompts[i]}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+
+      <div className="space-y-2">
+        <button
+          onClick={() => {
+            if (last) return;
+            setI((n) => n + 1);
+            try {
+              navigator.vibrate?.(25);
+            } catch {}
+          }}
+          disabled={last}
+          className={cn(
+            "w-full rounded-2xl py-4 text-sm font-bold transition active:scale-[0.98]",
+            last ? "bg-white/5 text-white/30" : "bg-accent-gradient shadow-glow"
+          )}
+        >
+          {last ? "That is the last one" : "Next question"}
+        </button>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => setI((n) => Math.max(0, n - 1))}
+            disabled={i === 0}
+            className="text-xs font-semibold text-white/40 disabled:opacity-30"
+          >
+            Back
+          </button>
+          <span className="text-[11px] text-white/30">
+            {i + 1} of {m.prompts.length}
+          </span>
+          <button
+            onClick={() => setI(0)}
+            className="text-xs font-semibold text-white/40"
+          >
+            Start over
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
+/** every photo in the script, used as the slideshow behind the numbers */
+const SLIDESHOW = MODULES.filter((x): x is PhotoModule => x.kind === "photo").map((x) => x.src);
+const SLIDE_MS = 3800;
+
+/**
+ * The numbers, over a slideshow of the two of them, counting up from below.
+ * A grid of stat cards read like a dashboard; this is meant to feel like the
+ * closing titles of a film about them, so the photos keep moving behind it and
+ * each number arrives on its own.
+ */
 function NumbersView({ m }: { m: NumbersModule }) {
   // computed in an effect, never during render: Date in a first-render path is
   // a hydration mismatch waiting to happen (workspace rule)
   const [live, setLive] = useState<{ days: number; months: number } | null>(null);
   useEffect(() => {
     setLive({ days: daysTogether(), months: monthsTogether() });
+  }, []);
+
+  const [slide, setSlide] = useState(0);
+  useEffect(() => {
+    if (SLIDESHOW.length < 2) return;
+    const t = setInterval(() => setSlide((n) => (n + 1) % SLIDESHOW.length), SLIDE_MS);
+    return () => clearInterval(t);
   }, []);
 
   const resolve = (value: string) => {
@@ -424,22 +457,57 @@ function NumbersView({ m }: { m: NumbersModule }) {
   };
 
   return (
-    <div className="space-y-6">
-      <Title>{m.title}</Title>
-      <div className="grid grid-cols-2 gap-3">
-        {m.stats.map((s, i) => (
+    <div className="relative -mx-6 -my-16 min-h-[100dvh] overflow-hidden">
+      {/* the slideshow, drifting slowly so it never feels like a static photo */}
+      <div className="absolute inset-0">
+        <AnimatePresence mode="sync">
           <motion.div
-            key={i}
-            className="glass space-y-1 rounded-2xl p-4"
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.12 }}
+            key={slide}
+            className="absolute inset-0"
+            initial={{ opacity: 0, scale: 1.14 }}
+            animate={{ opacity: 1, scale: 1.02 }}
+            exit={{ opacity: 0 }}
+            transition={{ opacity: { duration: 1.4 }, scale: { duration: SLIDE_MS / 1000 + 1.4, ease: "linear" } }}
           >
-            <p className="text-gradient text-3xl font-black tabular-nums">{resolve(s.value)}</p>
-            <p className="text-xs font-semibold leading-snug text-white/70">{s.label}</p>
-            {s.note && <p className="text-[11px] leading-snug text-white/35">{s.note}</p>}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={SLIDESHOW[slide]} alt="" className="h-full w-full object-cover" />
           </motion.div>
-        ))}
+        </AnimatePresence>
+        {/* dark enough that white numbers stay readable over any photo */}
+        <div className="absolute inset-0 bg-gradient-to-b from-base/85 via-base/70 to-base/95" />
+      </div>
+
+      <div className="relative flex min-h-[100dvh] flex-col justify-center px-6 py-16">
+        <motion.h2
+          className="text-center text-3xl font-black leading-tight tracking-tight drop-shadow-[0_2px_20px_rgba(0,0,0,0.8)]"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          {m.title}
+        </motion.h2>
+
+        <div className="mt-8 space-y-3">
+          {m.stats.map((s, i) => (
+            <motion.div
+              key={i}
+              className="flex items-baseline gap-4 rounded-2xl bg-black/40 p-4 backdrop-blur-sm ring-1 ring-white/10"
+              initial={{ opacity: 0, y: 60 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 + i * 0.45, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <span className="text-gradient shrink-0 text-4xl font-black tabular-nums">
+                {resolve(s.value)}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-bold leading-snug text-white/90">{s.label}</span>
+                {s.note && (
+                  <span className="mt-0.5 block text-[11px] leading-snug text-white/45">{s.note}</span>
+                )}
+              </span>
+            </motion.div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -448,13 +516,36 @@ function NumbersView({ m }: { m: NumbersModule }) {
 const ITINERARY_ICONS: Record<ItineraryIcon, typeof Gift> = {
   gift: Gift,
   ink: Syringe,
-  drinks: Martini,
+  cocktails: Martini,
+  dinner: UtensilsCrossed,
   smoke: Cigarette,
   moon: Moon,
+  coffee: Coffee,
+  bowling: Target,
+  music: Music,
+  cinema: Clapperboard,
+  walk: Footprints,
+  dessert: IceCreamCone,
+  arcade: Gamepad2,
+  spa: Bath,
+  photos: Camera,
+  shopping: ShoppingBag,
+  drive: Car,
+  view: Mountain,
 };
 
-function ItineraryView({ m }: { m: ItineraryModule }) {
+/**
+ * The plan feed. Panda never authored step numbers or times, because he decides
+ * the order as the day happens: the number is simply the position in `plan`,
+ * the list of what he has sent so far. The newest one is the big card, and
+ * everything before it stays on screen underneath as the day builds up.
+ */
+function ItineraryView({ m, plan }: { m: ItineraryModule; plan?: string[] }) {
   const Icon = ITINERARY_ICONS[m.icon];
+  const order = plan && plan.length ? plan : [m.id];
+  const stepNumber = Math.max(1, order.indexOf(m.id) + 1);
+  const earlier = order.slice(0, Math.max(0, order.indexOf(m.id)));
+
   return (
     <div className="space-y-6">
       <motion.div
@@ -467,7 +558,7 @@ function ItineraryView({ m }: { m: ItineraryModule }) {
           <Icon className="h-9 w-9 text-magenta" />
         </span>
         <span className="chip text-[11px] font-black uppercase tracking-widest">
-          Stop {m.step} · {m.when}
+          Next up · {stepNumber}
         </span>
       </motion.div>
 
@@ -483,6 +574,35 @@ function ItineraryView({ m }: { m: ItineraryModule }) {
           {m.detail}
         </motion.p>
       </div>
+
+      {earlier.length > 0 && (
+        <motion.div
+          className="space-y-2 border-t border-white/10 pt-5"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.45 }}
+        >
+          <p className="text-center text-[11px] font-black uppercase tracking-widest text-white/30">
+            Today so far
+          </p>
+          {earlier.map((id, idx) => {
+            const past = moduleById(id);
+            if (!past || past.kind !== "itinerary") return null;
+            const PastIcon = ITINERARY_ICONS[past.icon];
+            return (
+              <div key={id} className="flex items-center gap-3 rounded-2xl bg-white/[0.03] p-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[11px] font-black text-white/40">
+                  {idx + 1}
+                </span>
+                <PastIcon className="h-4 w-4 shrink-0 text-white/35" />
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white/55">
+                  {past.headline}
+                </span>
+              </div>
+            );
+          })}
+        </motion.div>
+      )}
     </div>
   );
 }
@@ -542,7 +662,14 @@ function FinaleView({ m }: { m: FinaleModule }) {
 
 /* -------------------------------------------------------------- dispatch */
 
-export function ModuleView({ module: m }: { module: AnniversaryModule }) {
+export function ModuleView({
+  module: m,
+  plan,
+}: {
+  module: AnniversaryModule;
+  /** ordered ids of the itinerary items sent so far, newest last */
+  plan?: string[];
+}) {
   switch (m.kind) {
     case "banner":
       return <BannerView m={m} />;
@@ -552,12 +679,12 @@ export function ModuleView({ module: m }: { module: AnniversaryModule }) {
       return <VoiceView m={m} />;
     case "photo":
       return <PhotoView m={m} />;
-    case "photoGuess":
-      return <PhotoGuessView m={m} />;
+    case "questions":
+      return <QuestionsView m={m} />;
     case "numbers":
       return <NumbersView m={m} />;
     case "itinerary":
-      return <ItineraryView m={m} />;
+      return <ItineraryView m={m} plan={plan} />;
     case "joke":
       return <JokeView m={m} />;
     case "finale":
@@ -572,8 +699,10 @@ export function ModuleGlyph({ module: m, className }: { module: AnniversaryModul
       ? ITINERARY_ICONS[m.icon]
       : m.kind === "voice"
         ? Mic
-        : m.kind === "photo" || m.kind === "photoGuess"
-          ? Sparkles
+        : m.kind === "photo"
+          ? Camera
+          : m.kind === "questions"
+            ? Sparkles
           : m.kind === "numbers"
             ? Cake
             : m.kind === "finale"

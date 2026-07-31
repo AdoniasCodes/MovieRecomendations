@@ -17,7 +17,7 @@ export type ModuleKind =
   | "message"
   | "voice"
   | "photo"
-  | "photoGuess"
+  | "questions"
   | "numbers"
   | "itinerary"
   | "joke"
@@ -64,14 +64,17 @@ export interface PhotoModule extends Base {
   story?: string;
 }
 
-export interface PhotoGuessModule extends Base {
-  kind: "photoGuess";
-  src: string;
-  question: string;
-  options: string[];
-  answerIndex: number;
-  /** what she reads once the photo is uncovered */
-  reveal: string;
+/**
+ * A deck of conversation prompts. There are no right answers and no scoring on
+ * purpose: the guessing game did not work (blurred photos are unreadable on a
+ * phone and a wrong answer just feels bad), so this replaces it with the thing
+ * it was standing in for, which is having something to talk about.
+ */
+export interface QuestionsModule extends Base {
+  kind: "questions";
+  title: string;
+  intro?: string;
+  prompts: string[];
 }
 
 export interface NumbersModule extends Base {
@@ -81,13 +84,19 @@ export interface NumbersModule extends Base {
   stats: { value: string; label: string; note?: string }[];
 }
 
-export type ItineraryIcon = "gift" | "ink" | "drinks" | "smoke" | "moon";
+export type ItineraryIcon =
+  | "gift" | "ink" | "cocktails" | "dinner" | "smoke" | "moon" | "coffee"
+  | "bowling" | "music" | "cinema" | "walk" | "dessert" | "arcade" | "spa"
+  | "photos" | "shopping" | "drive" | "view";
 
+/**
+ * One thing they could do today. NO step number and NO time, deliberately:
+ * Panda decides the order live, so the number is assigned when he sends it
+ * (see the plan feed in DirectorPanel/AnniversaryStage) rather than authored
+ * here. Anything not sent simply never happened.
+ */
 export interface ItineraryModule extends Base {
   kind: "itinerary";
-  step: number;
-  /** loose by design: "around 3" beats "15:00" when the day is drifting */
-  when: string;
   place: string;
   headline: string;
   detail: string;
@@ -111,7 +120,7 @@ export type AnniversaryModule =
   | MessageModule
   | VoiceModule
   | PhotoModule
-  | PhotoGuessModule
+  | QuestionsModule
   | NumbersModule
   | ItineraryModule
   | JokeModule
@@ -185,7 +194,7 @@ export const MODULES: AnniversaryModule[] = [
     label: "Photo: her under the flowers",
     src: "/anniversary/photos/park-her-arch.jpg",
     caption: "You, under the orange flowers",
-    story: "I took a lot of photos that evening and I kept this one closest. You were not even trying and you still looked like that.",
+    story: "I took a lot of photos that evening and I kept this one closest. You were not even trying and you still looked beautiful.",
   },
   {
     id: "photo-gate",
@@ -212,7 +221,7 @@ export const MODULES: AnniversaryModule[] = [
     label: "Photo: her mirror selfie",
     src: "/anniversary/photos/her-bandana.jpg",
     caption: "The look",
-    story: "You know exactly what you are doing when you make this face. That is the worst part.",
+    story: "You know exactly what you are doing when you make this face. And it always works on me 💗🔥",
   },
   {
     id: "photo-kiss",
@@ -221,7 +230,7 @@ export const MODULES: AnniversaryModule[] = [
     label: "Photo: mirror, me kissing you",
     src: "/anniversary/photos/mirror-kiss.jpg",
     caption: "My favourite place to put my face",
-    story: "The red sweater one. You laughed through the entire photoshoot and we got about forty of these.",
+    story: "Still one of the best days of my life. We had so much fun that day, and this is easily the best photo of it.",
   },
   {
     id: "photo-laugh",
@@ -230,7 +239,7 @@ export const MODULES: AnniversaryModule[] = [
     label: "Photo: you hiding, laughing",
     src: "/anniversary/photos/mirror-laugh.jpg",
     caption: "You, hiding, laughing",
-    story: "You do this every single time a camera comes out and I hope you never stop.",
+    story: "Hiding your face and somehow still taking the whole spotlight. You do that everywhere you go.",
   },
   {
     id: "photo-cutout",
@@ -263,41 +272,80 @@ export const MODULES: AnniversaryModule[] = [
     id: "photo-lastnight",
     kind: "photo",
     group: "photos",
-    label: "Photo: last night",
+    label: "Photo: a random night out",
     src: "/anniversary/photos/night-drinks.jpg",
-    caption: "Last night, the night before our anniversary",
-    story: "Twenty four hours before all of this. You had no idea what I was building.",
+    caption: "Just some random night",
+    story: "Nothing special planned, nowhere important to be. One of those ordinary nights with you that I would not trade for a big one.",
   },
   {
     id: "photo-late",
     kind: "photo",
     group: "photos",
-    label: "Photo: late last night",
+    label: "Photo: the one she hates",
     src: "/anniversary/photos/late-us.jpg",
-    caption: "And then this, late",
-    story: "Sideways, badly lit, both of us tired. Still one of the good ones.",
+    caption: "The best photo I have of you",
+    story: "I know. I know. But it is going in anyway, and you still look beautiful in it 💗",
+  },
+
+  /* ----------------------------------------------------------- questions */
+  // Conversation decks, for when the talking needs a nudge. No right answers,
+  // no scoring, no losing. Split into three so he can pick the temperature.
+  {
+    id: "questions-us",
+    kind: "questions",
+    group: "photos",
+    label: "Questions: how we started",
+    title: "How we started",
+    intro: "No right answers. Both of us answer, and no skipping the awkward ones.",
+    prompts: [
+      "Who actually texted who first? Tell the truth.",
+      "What did you genuinely think of me the first time we met?",
+      "When did you know this was going somewhere?",
+      "What is the first thing you noticed about me?",
+      "Was there a moment early on where you nearly walked away?",
+      "What did you tell your friends about me at the start?",
+      "What is something you were nervous to tell me back then?",
+      "Which of us fell first, and which of us fell harder?",
+    ],
   },
   {
-    id: "guess-when",
-    kind: "photoGuess",
+    id: "questions-year",
+    kind: "questions",
     group: "photos",
-    label: "Game: how long ago was this?",
-    src: "/anniversary/photos/her-habesha.jpg",
-    question: "How long ago did you send me these?",
-    options: ["About a month ago", "Last week", "Back at the start of the year"],
-    answerIndex: 0,
-    reveal: "End of June. I have looked at them a suspicious number of times since.",
+    label: "Questions: this year",
+    title: "The year we just had",
+    intro: "A year in, we should be able to answer these honestly.",
+    prompts: [
+      "What is the single best moment we had this year?",
+      "What is a small ordinary day you think about more than you would expect?",
+      "When did you feel closest to me?",
+      "What is something I do that you have never told me you love?",
+      "What is something I do that drives you slightly insane?",
+      "What was the hardest part of this year for you?",
+      "What is something you are proud of us for getting through?",
+      "What do you want more of in year two?",
+      "What do you want less of?",
+      "What is one thing you want us to do together before the next anniversary?",
+    ],
   },
   {
-    id: "guess-where",
-    kind: "photoGuess",
+    id: "questions-fun",
+    kind: "questions",
     group: "photos",
-    label: "Game: what was behind you?",
-    src: "/anniversary/photos/park-her-gate.jpg",
-    question: "What was right behind you in this one?",
-    options: ["The river and the flower arch", "The lake", "The hotel garden"],
-    answerIndex: 0,
-    reveal: "The river, the arch, and the whole park lighting up behind you. Two weeks ago, and I already wanted to bring you back.",
+    label: "Questions: the fun ones",
+    title: "The lighter round",
+    intro: "Lower stakes. Mostly.",
+    prompts: [
+      "What is a film I need to catch up on? Not your favourite, one you actually think I would like.",
+      "If we could be anywhere in the world right now, where are we?",
+      "What is the most ridiculous argument we have ever had?",
+      "What song is ours, whether we agreed on it or not?",
+      "What is your honest review of my cooking?",
+      "If you had to describe me to a stranger in three words, what are they?",
+      "What is something you want to try that you have never said out loud?",
+      "What is the best gift I have ever given you? Be brutal.",
+      "Where should we go for the next anniversary?",
+    ],
   },
 
   /* ------------------------------------------------------------- numbers */
@@ -318,62 +366,184 @@ export const MODULES: AnniversaryModule[] = [
   },
 
   /* ----------------------------------------------------------------- day */
+  // No numbers and no times here on purpose. Panda picks what happens next as
+  // the day goes, and the step number is stamped on when he sends it.
   {
     id: "day-room",
     kind: "itinerary",
     group: "day",
-    label: "Stop 1: the room",
-    step: 1,
-    when: "Around 3",
+    label: "The room",
     place: "Just us",
-    headline: "First, nobody else exists",
+    headline: "Nobody else exists",
     detail:
-      "Cake, flowers, and wine waiting in the room. No plans in here, no phones, no rushing. This part of the day is only for us.",
+      "Cake, flowers, and wine waiting in the room. No plans in here, no phones, no rushing. This part is only for us.",
     icon: "gift",
   },
   {
     id: "day-tattoo",
     kind: "itinerary",
     group: "day",
-    label: "Stop 2: tattoos",
-    step: 2,
-    when: "Around 4:35",
+    label: "Tattoos",
     place: "The tattoo shop",
-    headline: "Then we make it permanent",
-    detail: "We are getting inked today. Something we both carry from here on.",
+    headline: "We make it permanent",
+    detail: "We are getting inked. Something we both carry from here on.",
     icon: "ink",
   },
   {
     id: "day-cocktails",
     kind: "itinerary",
     group: "day",
-    label: "Stop 3: cocktails and dinner",
-    step: 3,
-    when: "Evening",
+    label: "Cocktails",
     place: "The cocktail spot",
-    headline: "Dinner and the good cocktails",
-    detail: "I know a place. Excellent drinks, prices that will not ruin the night, and dinner while we are there.",
-    icon: "drinks",
+    headline: "The good cocktails",
+    detail: "I know a place. Excellent drinks and prices that will not ruin the night.",
+    icon: "cocktails",
+  },
+  {
+    id: "day-dinner",
+    kind: "itinerary",
+    group: "day",
+    label: "Dinner",
+    place: "Somewhere worth sitting down",
+    headline: "Dinner, properly",
+    detail: "No rushing it, no watching the time. Order whatever you want.",
+    icon: "dinner",
   },
   {
     id: "day-hookah",
     kind: "itinerary",
     group: "day",
-    label: "Stop 4: hookah",
-    step: 4,
-    when: "Late",
+    label: "Hookah",
     place: "The chill spot",
-    headline: "Then we slow all the way down",
+    headline: "We slow all the way down",
     detail: "Hookah, nowhere to be, and however long we feel like staying.",
     icon: "smoke",
+  },
+  {
+    id: "day-bowling",
+    kind: "itinerary",
+    group: "day",
+    label: "Bowling",
+    place: "Wherever the lanes are free",
+    headline: "I am going to beat you at bowling",
+    detail: "Loser buys the next round. I have thought about this a lot.",
+    icon: "bowling",
+  },
+  {
+    id: "day-coffee",
+    kind: "itinerary",
+    group: "day",
+    label: "Coffee",
+    place: "A proper coffee place",
+    headline: "Coffee, the way this city does it best",
+    detail: "Sit, talk, watch people go by. The most Addis thing there is.",
+    icon: "coffee",
+  },
+  {
+    id: "day-live-music",
+    kind: "itinerary",
+    group: "day",
+    label: "Live music",
+    place: "Somewhere with a band",
+    headline: "Live music and no conversation needed",
+    detail: "Azmari, jazz, whatever is playing. We just sit close and listen.",
+    icon: "music",
+  },
+  {
+    id: "day-cinema",
+    kind: "itinerary",
+    group: "day",
+    label: "Cinema",
+    place: "The cinema",
+    headline: "A film, on the big screen",
+    detail: "Fitting, given the app this is living inside.",
+    icon: "cinema",
+  },
+  {
+    id: "day-walk",
+    kind: "itinerary",
+    group: "day",
+    label: "A walk",
+    place: "Friendship Park, or wherever we end up",
+    headline: "Just a walk, no destination",
+    detail: "The same kind of evening as those park photos. That worked out well.",
+    icon: "walk",
+  },
+  {
+    id: "day-dessert",
+    kind: "itinerary",
+    group: "day",
+    label: "Dessert",
+    place: "Cake, ice cream, whatever you point at",
+    headline: "Something sweet, purely because you want it",
+    detail: "No sharing rules. You order, I pay, everyone wins.",
+    icon: "dessert",
+  },
+  {
+    id: "day-arcade",
+    kind: "itinerary",
+    group: "day",
+    label: "Arcade or pool",
+    place: "Somewhere with games",
+    headline: "Pool, darts, or whatever they have",
+    detail: "Competitive, petty, and fun. Our natural habitat.",
+    icon: "arcade",
+  },
+  {
+    id: "day-spa",
+    kind: "itinerary",
+    group: "day",
+    label: "Spa or massage",
+    place: "Somewhere quiet",
+    headline: "An hour of doing absolutely nothing",
+    detail: "You have earned this more than I have.",
+    icon: "spa",
+  },
+  {
+    id: "day-photos",
+    kind: "itinerary",
+    group: "day",
+    label: "Take proper photos",
+    place: "Anywhere with decent light",
+    headline: "New photos, for next year's version of this",
+    detail: "I am going to need material for the second anniversary.",
+    icon: "photos",
+  },
+  {
+    id: "day-shopping",
+    kind: "itinerary",
+    group: "day",
+    label: "Buy you something",
+    place: "Wherever you spot it",
+    headline: "You point, I buy",
+    detail: "No negotiating and no looking at the price first.",
+    icon: "shopping",
+  },
+  {
+    id: "day-view",
+    kind: "itinerary",
+    group: "day",
+    label: "A view",
+    place: "Somewhere high up",
+    headline: "The whole city, from above",
+    detail: "Entoto, a rooftop, anywhere we can see the lights come on.",
+    icon: "view",
+  },
+  {
+    id: "day-drive",
+    kind: "itinerary",
+    group: "day",
+    label: "Night drive",
+    place: "No particular direction",
+    headline: "Drive around with the music up",
+    detail: "No destination. That is the entire point of it.",
+    icon: "drive",
   },
   {
     id: "day-back",
     kind: "itinerary",
     group: "day",
-    label: "Stop 5: back to the room",
-    step: 5,
-    when: "Around 11",
+    label: "Back to the room",
     place: "Back where we started",
     headline: "And then it is just us again",
     detail: "One more thing waiting for you when we get back. You will find out.",

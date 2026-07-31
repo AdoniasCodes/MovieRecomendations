@@ -28,8 +28,13 @@ export const STAGE_OPENED_KEY = "amore-movies/anniv-2026-opened";
 export interface StageCache {
   moduleId: string | null;
   blanked: boolean;
+  /** ordered itinerary ids sent so far, so a reload keeps the step numbers */
+  plan?: string[];
   at: number;
 }
+
+/** where the director's running order lives between reloads of his panel */
+export const PLAN_KEY = "amore-movies/anniv-plan";
 
 export function readStageCache(): StageCache | null {
   if (typeof window === "undefined") return null;
@@ -45,12 +50,12 @@ export function readStageCache(): StageCache | null {
   }
 }
 
-export function writeStageCache(moduleId: string | null, blanked: boolean): void {
+export function writeStageCache(moduleId: string | null, blanked: boolean, plan?: string[]): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
       STAGE_CACHE_KEY,
-      JSON.stringify({ moduleId, blanked, at: Date.now() } satisfies StageCache)
+      JSON.stringify({ moduleId, blanked, plan, at: Date.now() } satisfies StageCache)
     );
   } catch {
     /* storage full or blocked: the hello round-trip still covers us */

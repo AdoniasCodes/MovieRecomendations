@@ -8,7 +8,7 @@
 // on one phone ("Just us, on this phone"), which is how they get to relive it.
 
 import { ModuleGlyph, ModuleView } from "@/components/anniversary/ModuleView";
-import { STAGE_EVENTS, stageTopic } from "@/lib/anniversary/channel";
+import { PLAN_KEY, STAGE_EVENTS, stageTopic } from "@/lib/anniversary/channel";
 import { anniversaryPhase, type AnniversaryPhase } from "@/lib/anniversary/date";
 import {
   GROUP_LABELS,
@@ -69,14 +69,30 @@ export function DirectorPanel() {
   const [soloIndex, setSoloIndex] = useState(0);
 
   const [blanked, setBlanked] = useState(false);
+  /** the running order: itinerary ids in the order he actually sent them, which
+   * is where her step numbers come from. Persisted so reloading his panel
+   * mid-day does not renumber the whole plan. */
+  const [plan, setPlan] = useState<string[]>([]);
 
   const linkRef = useRef<BroadcastLink | null>(null);
   // the channel handlers outlive any single render, so the state they answer
   // with has to reach them through refs
   const currentRef = useRef<string | null>(null);
   const blankedRef = useRef(false);
+  const planRef = useRef<string[]>([]);
   currentRef.current = currentId;
   blankedRef.current = blanked;
+  planRef.current = plan;
+
+  // restore the running order after a reload of his own panel
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(PLAN_KEY);
+      if (raw) setPlan(JSON.parse(raw) as string[]);
+    } catch {
+      /* a lost plan only costs the numbering, not the night */
+    }
+  }, []);
 
   /* ----------------------------------------------------------- transport */
   useEffect(() => {
@@ -96,6 +112,7 @@ export function DirectorPanel() {
           linkRef.current?.send(STAGE_EVENTS.state, {
             moduleId: currentRef.current,
             blanked: blankedRef.current,
+            plan: planRef.current,
           });
         },
       },
@@ -115,7 +132,21 @@ export function DirectorPanel() {
     setCurrentId(id);
     setBlanked(false);
     setSent((prev) => new Set(prev).add(id));
-    linkRef.current?.send(STAGE_EVENTS.show, { moduleId: id });
+
+    // Sending an itinerary item is what puts it in the plan, and its position
+    // in that list IS its step number on her screen. Re-sending one already in
+    // the plan keeps its original place rather than bumping it to the end.
+    let nextPlan = planRef.current;
+    if (moduleById(id)?.kind === "itinerary" && !nextPlan.includes(id)) {
+      nextPlan = [...nextPlan, id];
+      planRef.current = nextPlan;
+      setPlan(nextPlan);
+      try {
+        window.localStorage.setItem(PLAN_KEY, JSON.stringify(nextPlan));
+      } catch {}
+    }
+
+    linkRef.current?.send(STAGE_EVENTS.show, { moduleId: id, plan: nextPlan });
     try {
       navigator.vibrate?.(30);
     } catch {}
@@ -200,7 +231,7 @@ export function DirectorPanel() {
             exit={{ opacity: 0, y: -14 }}
             transition={{ duration: 0.4 }}
           >
-            <ModuleView module={m} />
+            <ModuleView module={m} plan={plan} />
           </motion.div>
         </AnimatePresence>
 
@@ -296,6 +327,40 @@ export function DirectorPanel() {
         </div>
       </div>
 
+      {/* the running order, built by what he has actually sent */}
+      {plan.length > 0 && (
+        <div className="glass space-y-2 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-widest text-white/40">
+              Today so far
+            </span>
+            <button
+              onClick={() => {
+                setPlan([]);
+                planRef.current = [];
+                try {
+                  window.localStorage.removeItem(PLAN_KEY);
+                } catch {}
+              }}
+              className="text-[11px] font-bold text-white/35"
+            >
+              Reset order
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {plan.map((id, i) => (
+              <span
+                key={id}
+                className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1 text-[11px] font-semibold text-white/60"
+              >
+                <span className="text-magenta">{i + 1}</span>
+                {moduleById(id)?.label ?? id}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* the whole night, grouped */}
       {GROUP_ORDER.map((group) => {
         const items = modulesInGroup(group);
@@ -383,7 +448,7 @@ export function DirectorPanel() {
             exit={{ opacity: 0 }}
           >
             <div className="mx-auto min-h-full w-full max-w-md px-6 py-16">
-              <ModuleView module={preview} />
+              <ModuleView module={preview} plan={plan} />
               <div className="mt-10 space-y-2">
                 <button
                   onClick={() => {
