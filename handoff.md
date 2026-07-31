@@ -67,6 +67,29 @@ Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in com
 - Deploy verified live: all 15 assets return 200 with exact byte counts, content strings
   present in shared chunk `953-*.js`, and `ambient.mp3` is absent from the bundle.
 
+### Letters dropped, music added, demo mode added (commit 135ce5b, live)
+- **All three letters removed.** Panda: everything he wanted to say is in the voice notes, and
+  a letter competing with his own voice is noise. The `message` kind and its hold-to-open seal
+  renderer still exist in the code if a letter is ever wanted again; there are just no
+  instances. The morning open is now the **banner alone**, then "the rest of today comes from
+  me", then she closes it.
+- **Ambient music:** `public/anniversary/audio/ambient.mp3`, a synthesised warm I-vi-IV-V pad,
+  32s seamless loop, 513K. Generated with ffmpeg rather than sourced so there is no licensing
+  question. Regenerate or replace freely; `AMBIENT_SRC` in AnniversaryStage points at it.
+- **Demo mode** (`lib/anniversary/demo.ts` + toggle in Profile, Panda only, hidden once the
+  day has passed):
+  - **Device-local localStorage, deliberately NOT an account or DB flag.** That is what lets
+    him enable it as himself, switch to her account on the SAME phone, watch her side, then
+    switch back and turn it off. It also means her phone can never be put in demo mode.
+  - While on: the stage ignores the date gate, ignores the once-per-device flag, and **never
+    writes that flag**, so rehearsing cannot consume her real first open.
+  - Her side becomes a full walkthrough of all 25 modules with Next/Back, under a loud DEMO
+    badge with an Exit.
+- E2E: `probe-demo.mjs` **13/13** (asserts the one-shot flag is identical before and after a
+  full rehearsal, and that the switch survives the round trip back to his account) and
+  `probe-day.mjs` **11/11**. Deploy verified live: ambient 200 with exact bytes, DEMO badge in
+  the layout chunk, zero letter strings anywhere in the bundle.
+
 ### Environment notes from this session
 - Workspace moved to **pnpm**. `netlify.toml` now runs `pnpm run build` and it **works on
   Netlify** (verified: deploy landed ~2 min after push). Use `pnpm exec next start -p 3001`
