@@ -90,6 +90,33 @@ Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in com
   `probe-day.mjs` **11/11**. Deploy verified live: ambient 200 with exact bytes, DEMO badge in
   the layout chunk, zero letter strings anywhere in the bundle.
 
+### Round 3 of Panda's feedback (2026-07-31, commit 27a57d2, live)
+- **Captions rewritten** with his real context (I had none: I was writing from the images
+  alone). The night-out photo was NOT the eve of the anniversary, it is an ordinary night;
+  the red sweater day had no photoshoot; the sideways photo she hates is now openly "the best
+  photo I have of you". If a caption is ever wrong, it is one line in script.ts.
+- **Guessing game deleted.** Blurred photos are unreadable on a phone and a wrong answer just
+  feels bad. Replaced by three **question decks** (27 prompts, no right answers, no scoring):
+  how we started, the year we had, the lighter round. New module kind `questions`.
+- **The day is no longer a fixed itinerary.** No authored step numbers and no times, because
+  he picks the order live. Sending an item appends it to `plan` (persisted under
+  `amore-movies/anniv-plan`, broadcast with every `show`), and its POSITION in that list is the
+  step number she sees, with everything already sent listed underneath. Re-sending keeps the
+  original position. There is a "Today so far" strip and a Reset order button in his panel.
+  Cocktails and dinner are separate, and there are **18 activities** including bowling, coffee,
+  live music, cinema, a walk, dessert, arcade, spa, a view and a night drive.
+- **Numbers became a slideshow**: photos crossfading behind, each number rising from below.
+- **Music is his own song** (`ambient.mp3`, Dawit Tsige, 5:35, mono 96k, 3.8MB). Because it has
+  vocals, `lib/anniversary/audio-bus.ts` pauses it whenever a voice note plays and resumes
+  after; a deliberate mute is never overridden. Volume sits at 0.2.
+- **Pulse was never broken.** Verified end to end: solo drives the motor, the receiver gets
+  driven from the other phone, level 5 is one unbroken [4000] buzz, Stop silences. The real
+  problem was that the controller phone never buzzes ITSELF, so "I am driving" with nobody
+  receiving did nothing and read as broken. It now says so plainly and offers a one-tap
+  "feel it on this phone instead".
+- E2E **29/29** across three suites in the scratchpad: `probe-pulse.mjs` (5), `probe-demo.mjs`
+  (13), `probe-day.mjs` (11).
+
 ### Environment notes from this session
 - Workspace moved to **pnpm**. `netlify.toml` now runs `pnpm run build` and it **works on
   Netlify** (verified: deploy landed ~2 min after push). Use `pnpm exec next start -p 3001`
