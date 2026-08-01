@@ -212,9 +212,9 @@ export function DirectorPanel() {
     return <div className="min-h-[60vh]" />;
   }
 
-  // Until July 31 is behind them this is Panda's console only, which includes
-  // the days BEFORE (she must not be able to browse the surprise early by
-  // typing the URL). From August it belongs to both of them.
+  // Until the celebration is behind them this is Panda's console only, which
+  // includes the days BEFORE (she must not be able to browse the surprise early
+  // by typing the URL). Afterwards it belongs to both of them.
   if (phase !== "after" && realWho !== "panda") {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center space-y-4 text-center">

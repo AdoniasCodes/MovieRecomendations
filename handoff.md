@@ -1,6 +1,39 @@
 # handoff.md — Amore Movies
 
-_Updated: 2026-07-30_
+_Updated: 2026-08-01_
+
+## THE DAY MOVED TO 2026-08-01 (today), shipped this morning
+They did not celebrate on the 31st, so the whole experience was shifted a day. Everything
+behaves exactly as it would have yesterday.
+
+- **`lib/anniversary/date.ts` now holds two dates instead of one.** `ANNIVERSARY` is still
+  2026-07-31 because that is the real one year mark and it is what the numbers count to.
+  `CELEBRATION_FROM` (07-31) to `CELEBRATION_UNTIL` (08-02, exclusive) is the window the
+  experience is live and locked to Panda. It is a WINDOW rather than a single date so the
+  night can run past midnight without the lock dropping mid-story.
+- **`daysTogether()` / `monthsTogether()` are pinned to the milestone**, not to the clock.
+  The numbers module is a snapshot of year one, so it reads **365 days / 12 months** today
+  and will still read that next month instead of drifting a day per day.
+- **All three localStorage keys in `channel.ts` are suffixed `-0801`** (stage cache, one-shot
+  open flag, running order). This is the part that would have quietly broken the day: if her
+  phone had consumed `anniv-2026-opened` on the 31st, the morning takeover would never fire
+  today. Orphaning the old keys also means no stale plan or cached module from yesterday can
+  surface tonight.
+- E2E `scratchpad/probe-today.mjs` **16/16** on a local prod build, both real accounts, real
+  broadcast: her first open fires the banner with no input even with the OLD key pre-seeded,
+  the new key is written, a second open does not re-fire, she is still locked out of
+  `/anniversary` and the Year One card, he still gets the panel plus the demo switch, a module
+  fired from his phone lands on hers, and the numbers read 365 / 12.
+- Note: the probe fires a REAL broadcast on `stage:<coupleId>`. It ran at ~06:30. If her app
+  had been open and joined at that second she would have seen the numbers module flash by.
+  Nothing was written to the database.
+
+### STILL TRUE AND STILL THE ONE THING CODE CANNOT FIX
+Her iPhone must load the new bundle before any of this reaches her, and today that matters
+more than it did: **a phone still running yesterday's bundle computes phase "after", which
+UNLOCKS the whole thing for her.** She would see a "Year One / Relive it" card in Profile and
+could walk the entire surprise herself. Get her to open the app once, fresh, before anything
+else today.
 
 ## CURRENT PHASE (2026-07-30): Phase 13 "Year One" BUILT + PUSHED, awaiting content + 2 manual steps
 Their first anniversary is **TOMORROW, 2026-07-31**. Two features shipped in commit 1043fd8

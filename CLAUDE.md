@@ -38,9 +38,15 @@ them); everything else gets the bell banner + badge.
 - **App-usage statistics are out.** Panda ruled them out: the couple has not used the app
   enough for "movies matched" style numbers to mean anything. The numbers module uses his own
   relationship facts.
-- **Who may drive:** on July 31 it is Panda only (Hermi's device is display-only and the URL is
-  a locked door). From August 1 either of them can drive it or walk it alone. Gate on the
-  SESSION identity, never the display toggle (instructions.md §8e).
+- **The day moved.** The real one year mark was 2026-07-31 but they celebrated it on
+  2026-08-01. `lib/anniversary/date.ts` therefore keeps two dates: `ANNIVERSARY` (the
+  milestone the numbers count to, still the 31st) and the `CELEBRATION_FROM`/`CELEBRATION_UNTIL`
+  window (the days the experience is live and locked, the 31st through the 1st). The three
+  localStorage keys in `channel.ts` are suffixed with the celebration day so a slipped date can
+  never be broken by a consumed one-shot flag or a stale plan from the day before.
+- **Who may drive:** during the celebration window it is Panda only (Hermi's device is
+  display-only and the URL is a locked door). From August 2 either of them can drive it or walk
+  it alone. Gate on the SESSION identity, never the display toggle (instructions.md §8e).
 
 ## After Dark Pulse
 - Lives behind the existing After Dark consent screen, same as the dice game. No store

@@ -1,4 +1,4 @@
-// THE CONTENT FILE. Everything Hermi sees on July 31 is in this one file.
+// THE CONTENT FILE. Everything Hermi sees on the day is in this one file.
 //
 // How it works: the night is a flat list of MODULES. Panda's director panel
 // shows all of them and he fires whichever one fits the moment, in any order,

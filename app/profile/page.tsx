@@ -26,8 +26,8 @@ export default function ProfilePage() {
   const taste = who === "hermi" ? TASTE_AMORE : TASTE_SEED;
   const loved = taste.lovedTitleIds.map(getTitle).filter(Boolean) as Title[];
 
-  // Until July 31 is over this card is Panda's console, so it stays hidden from
-  // Hermi. Afterwards it belongs to both of them, as the way back in.
+  // Until the celebration is over this card is Panda's console, so it stays
+  // hidden from Hermi. Afterwards it belongs to both of them, as the way back in.
   // Resolved in an effect: a date read during first render is a hydration risk.
   const [phase, setPhase] = useState<AnniversaryPhase | null>(null);
   useEffect(() => setPhase(anniversaryPhase()), []);

@@ -1,14 +1,15 @@
 "use client";
 
-// Hermi's side of July 31. A full takeover that shows whatever Panda fires from
-// his phone, in whatever order he decides on the day.
+// Hermi's side of the anniversary day. A full takeover that shows whatever
+// Panda fires from his phone, in whatever order he decides on the day.
+// (The day itself moved from the 31st to the 1st: see lib/anniversary/date.ts.)
 //
 // Mounted globally in app/providers.tsx so it can appear over any tab. z-[90]:
 // above every other overlay in the app, below WelcomeGate (z-100) so the
 // identity picker still wins when the app is deciding who is holding the phone.
 //
 // Two ways it comes alive:
-//   1. The morning. On July 31, Hermi's first app open fires the banner by
+//   1. The morning. On the day, Hermi's first app open fires the banner by
 //      itself, once per device, and she can walk forward to the first letter and
 //      then close it. That is the only self-driven part.
 //   2. The rest of the day. Panda sends `show` from his director panel and this
