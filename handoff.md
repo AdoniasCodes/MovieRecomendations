@@ -34,6 +34,12 @@ The panel's status line is now diagnostic rather than binary: "This phone is not
 "Reconnecting this phone..." / "Her app is not open" / the module name, each with the matching
 next step underneath.
 
+**Deploy verified live** (commit 1e84f98): the `/anniversary` page chunk on Netlify carries all
+three new copy strings, shared chunk `949-*` is byte-identical to this build, and the deployed
+layout chunk (her globally mounted stage) contains both `revive` and the new `visibilitychange`
+handler. Note the first poll gave a FALSE positive by comparing chunk names, see instructions
+§6: stale local chunks make that check meaningless.
+
 E2E `scratchpad/probe-sync.mjs` **9/9**, each block a reproduction of a real failure: panel
 open first and her app second (the reported bug), her phone going offline and being aged out
 honestly, her phone returning and the link healing with no reload and no action from either of

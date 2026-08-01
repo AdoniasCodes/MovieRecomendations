@@ -296,11 +296,21 @@ deploy can take 10+ min to go live — keep polling the chunk, not the CI (there
 **ALWAYS `curl --compressed` when grepping a deployed chunk** (cost 7 wasted minutes on
 2026-08-01). Netlify serves chunk JS brotli/gzip encoded, so a plain `curl | grep` searches
 compressed bytes, finds nothing, and reads exactly like "the deploy has not landed yet".
-The cheapest possible check needs no grep at all: **compare the chunk hashes in the live HTML
-against `.next/static/chunks/`.** Chunk names are content hashes, so a shared chunk that exists
-locally under the SAME name is proof the deployed build is your build. Then `cmp` the fetched
-file against the local one for byte-identical confirmation. Only the `app/*` chunks (layout,
-page, error, main-app) legitimately differ.
+**Do NOT trust "every shared chunk name exists locally" as a deploy check.** It gave a false
+LIVE on the very next deploy (2026-08-01): `.next/static/chunks/` accumulates chunks across
+builds, so the PREVIOUS build's shared chunks are still sitting on disk and every live name
+matches while Netlify is still serving the old bundle. Chunk-name matching only proves a chunk
+came from *some* build of yours.
+
+The reliable check is a string that exists ONLY in the new commit:
+1. `grep -rl "<new string>" .next/static/chunks/` to find its chunk.
+2. If it is a route chunk, pull the current `app/<route>/page-*.js` path out of the LIVE HTML
+   (that hash always differs from local) and `curl --compressed` it.
+3. For a shared chunk, fetch the same name and `cmp` it against the local file: byte-identical
+   is proof.
+4. The layout chunk is a special case: same SIZE as local but differs around char ~1200 because
+   env values are inlined. Grep it for a new symbol instead of comparing bytes (`revive`,
+   `visibilitychange`, a new copy string).
 
 **If local curl times out (000), do NOT assume the deploy failed.** Rule out a local/ISP path
 problem first (hit us 2026-07-09: ISP could not reach Netlify's Frankfurt edge while the site
