@@ -293,6 +293,15 @@ grep out `/_next/static/chunks/app/<route>/page-*.js` first. A brand new route r
 itself strong evidence the deploy landed. A free-tier
 deploy can take 10+ min to go live — keep polling the chunk, not the CI (there is none).
 
+**ALWAYS `curl --compressed` when grepping a deployed chunk** (cost 7 wasted minutes on
+2026-08-01). Netlify serves chunk JS brotli/gzip encoded, so a plain `curl | grep` searches
+compressed bytes, finds nothing, and reads exactly like "the deploy has not landed yet".
+The cheapest possible check needs no grep at all: **compare the chunk hashes in the live HTML
+against `.next/static/chunks/`.** Chunk names are content hashes, so a shared chunk that exists
+locally under the SAME name is proof the deployed build is your build. Then `cmp` the fetched
+file against the local one for byte-identical confirmation. Only the `app/*` chunks (layout,
+page, error, main-app) legitimately differ.
+
 **If local curl times out (000), do NOT assume the deploy failed.** Rule out a local/ISP path
 problem first (hit us 2026-07-09: ISP could not reach Netlify's Frankfurt edge while the site
 was 200 worldwide):
