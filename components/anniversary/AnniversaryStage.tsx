@@ -21,8 +21,10 @@
 
 import { ModuleView } from "@/components/anniversary/ModuleView";
 import {
+  ACK_INTERVAL_MS,
   STAGE_EVENTS,
   STAGE_OPENED_KEY,
+  STAGE_PROTOCOL,
   clearStageCache,
   readStageCache,
   stageTopic,
@@ -119,6 +121,15 @@ export function AnniversaryStage() {
   useEffect(() => {
     if (!coupleId) return;
 
+    // Every ack carries the protocol stamp so his panel can tell an old bundle
+    // apart from no bundle at all.
+    const announce = () => {
+      linkRef.current?.send(STAGE_EVENTS.ack, {
+        moduleId: moduleIdRef.current,
+        v: STAGE_PROTOCOL,
+      });
+    };
+
     const show = (id: string, nextPlan?: unknown) => {
       if (!moduleById(id)) return;
       const orderedPlan = Array.isArray(nextPlan) ? (nextPlan as string[]) : undefined;
@@ -128,7 +139,8 @@ export function AnniversaryStage() {
       setModuleId(id);
       if (orderedPlan) setPlan(orderedPlan);
       writeStageCache(id, false, orderedPlan);
-      linkRef.current?.send(STAGE_EVENTS.ack, { moduleId: id });
+      moduleIdRef.current = id;
+      announce();
       try {
         navigator.vibrate?.(45);
       } catch {}
@@ -140,38 +152,73 @@ export function AnniversaryStage() {
       setBlanked(true);
       setModuleId(null);
       writeStageCache(null, true);
-      linkRef.current?.send(STAGE_EVENTS.ack, { moduleId: null });
+      moduleIdRef.current = null;
+      announce();
     };
 
-    const link = openBroadcast(stageTopic(coupleId), {
-      [STAGE_EVENTS.show]: (p) => {
-        if (typeof p.moduleId === "string") show(p.moduleId, p.plan);
+    const link = openBroadcast(
+      stageTopic(coupleId),
+      {
+        [STAGE_EVENTS.show]: (p) => {
+          if (typeof p.moduleId === "string") show(p.moduleId, p.plan);
+        },
+        [STAGE_EVENTS.blank]: hold,
+        [STAGE_EVENTS.end]: () => {
+          setActive(false);
+          setBlanked(false);
+          setModuleId(null);
+          setSelfPaced(false);
+          moduleIdRef.current = null;
+          clearStageCache();
+          announce();
+        },
+        // he just opened his panel and is asking what we have on screen
+        [STAGE_EVENTS.hello]: announce,
+        // His answer to OUR hello, after we reloaded or reconnected mid-story.
+        // This is the only way to recover anything he sent while this device's
+        // channel was down, so it has to cover the holding screen too.
+        [STAGE_EVENTS.state]: (p) => {
+          if (typeof p.moduleId === "string") show(p.moduleId, p.plan);
+          else if (p.blanked === true) hold();
+          else announce(); // nothing to show, but he still needs to know I am here
+        },
       },
-      [STAGE_EVENTS.blank]: hold,
-      [STAGE_EVENTS.end]: () => {
-        setActive(false);
-        setBlanked(false);
-        setModuleId(null);
-        setSelfPaced(false);
-        clearStageCache();
-      },
-      // he just opened his panel and is asking what we have on screen
-      [STAGE_EVENTS.hello]: () => {
-        linkRef.current?.send(STAGE_EVENTS.ack, { moduleId: moduleIdRef.current });
-      },
-      // His answer to OUR hello, after we reloaded or reconnected mid-story.
-      // This is the only way to recover anything he sent while this device's
-      // channel was down, so it has to cover the holding screen too.
-      [STAGE_EVENTS.state]: (p) => {
-        if (typeof p.moduleId === "string") show(p.moduleId, p.plan);
-        else if (p.blanked === true) hold();
-      },
-    });
+      // Announcing on every (re)join is the fix for the panel sitting on "Not
+      // connected yet" forever. Before this, her device only ever spoke when
+      // spoken to, so if she opened the app AFTER he opened his panel, his one
+      // and only hello had already been and gone and nothing ever told him she
+      // had arrived.
+      (status) => {
+        if (status === "joined") announce();
+      }
+    );
 
     linkRef.current = link;
     link?.send(STAGE_EVENTS.hello, {});
+    announce();
+
+    // Keep saying it. This is what lets his panel age her out honestly when her
+    // phone really is gone, and what brings the indicator back by itself when
+    // she picks the phone up again.
+    const beat = setInterval(() => {
+      if (document.visibilityState === "visible") announce();
+    }, ACK_INTERVAL_MS);
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      // the socket may be a zombie after a screen lock; force a fresh join and
+      // then say hello again on the other side of it
+      linkRef.current?.revive();
+      announce();
+      linkRef.current?.send(STAGE_EVENTS.hello, {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
 
     return () => {
+      clearInterval(beat);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
       link?.close();
       linkRef.current = null;
     };

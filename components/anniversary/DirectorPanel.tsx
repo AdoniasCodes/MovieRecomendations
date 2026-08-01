@@ -8,7 +8,14 @@
 // on one phone ("Just us, on this phone"), which is how they get to relive it.
 
 import { ModuleGlyph, ModuleView } from "@/components/anniversary/ModuleView";
-import { PLAN_KEY, STAGE_EVENTS, stageTopic } from "@/lib/anniversary/channel";
+import {
+  ACK_STALE_MS,
+  PLAN_KEY,
+  PROBE_INTERVAL_MS,
+  STAGE_EVENTS,
+  STAGE_PROTOCOL,
+  stageTopic,
+} from "@/lib/anniversary/channel";
 import { anniversaryPhase, type AnniversaryPhase } from "@/lib/anniversary/date";
 import {
   GROUP_LABELS,
@@ -19,9 +26,14 @@ import {
   type ModuleGroup,
 } from "@/lib/anniversary/script";
 import { useAuth } from "@/lib/auth";
-import { openBroadcast, type BroadcastLink, type BroadcastStatus } from "@/lib/broadcast";
+import {
+  openBroadcast,
+  type BroadcastLink,
+  type BroadcastPayload,
+  type BroadcastStatus,
+} from "@/lib/broadcast";
 import { cn } from "@/lib/cn";
-import { pingPartnerDevice } from "@/lib/live";
+import { pingPartnerDevice, type PushOutcome } from "@/lib/live";
 import { identityFromEmail, partnerUser, useWhoami } from "@/lib/identity";
 import { getSupabase } from "@/lib/supabase";
 import { AnimatePresence, motion } from "framer-motion";
@@ -64,9 +76,18 @@ export function DirectorPanel() {
   const [sent, setSent] = useState<Set<string>>(new Set());
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [herShowing, setHerShowing] = useState<string | null | undefined>(undefined);
+  /** is her phone actually answering right now (aged out, not just "ever seen") */
+  const [herPresent, setHerPresent] = useState(false);
+  /** protocol stamp off her last ack: undefined = never heard, null = old bundle */
+  const [herProtocol, setHerProtocol] = useState<string | null | undefined>(undefined);
+  const herSeenAt = useRef(0);
   const [linkStatus, setLinkStatus] = useState<BroadcastStatus>("joining");
+  /** true when this device has no Supabase client at all, which is a very
+   * different problem from her being offline and must not read the same */
+  const [noLink, setNoLink] = useState(false);
   const [preview, setPreview] = useState<AnniversaryModule | null>(null);
   const [pinged, setPinged] = useState(false);
+  const [pingResult, setPingResult] = useState<PushOutcome | null>(null);
   const [soloIndex, setSoloIndex] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetDone, setResetDone] = useState(false);
@@ -100,18 +121,31 @@ export function DirectorPanel() {
   /* ----------------------------------------------------------- transport */
   useEffect(() => {
     if (!coupleId) return;
+    const seen = (p: BroadcastPayload) => {
+      herSeenAt.current = Date.now();
+      setHerPresent(true);
+      if ("v" in p) setHerProtocol(typeof p.v === "string" ? p.v : null);
+    };
+
     const link = openBroadcast(
       stageTopic(coupleId),
       {
         // her device reporting what it has on screen
         [STAGE_EVENTS.ack]: (p) => {
+          seen(p);
+          setHerProtocol(typeof p.v === "string" ? p.v : null);
           setHerShowing((p.moduleId as string | null) ?? null);
         },
         // She reloaded (or her app reconnected) and is asking what she should be
         // showing. Always answer, including "nothing but the holding screen":
         // broadcast is fire and forget, so anything sent while her channel was
         // down is only recoverable through this handshake.
-        [STAGE_EVENTS.hello]: () => {
+        //
+        // Her hello is ALSO proof of life, and missing that was the bug: if she
+        // opened the app after he opened his panel, his single startup hello had
+        // already gone unanswered and nothing else ever told him she had arrived.
+        [STAGE_EVENTS.hello]: (p) => {
+          seen(p);
           linkRef.current?.send(STAGE_EVENTS.state, {
             moduleId: currentRef.current,
             blanked: blankedRef.current,
@@ -122,6 +156,7 @@ export function DirectorPanel() {
       setLinkStatus
     );
     linkRef.current = link;
+    setNoLink(link === null);
     // ask her device to report in, so the panel is honest from the first second
     link?.send(STAGE_EVENTS.hello, {});
     return () => {
@@ -129,6 +164,35 @@ export function DirectorPanel() {
       linkRef.current = null;
     };
   }, [coupleId]);
+
+  /* ------------------------------------------- is she really still there? */
+  // Age her out on a timer rather than trusting the last thing we heard, and
+  // keep knocking while she looks absent so the indicator recovers by itself
+  // the moment her phone comes back. Everything here is broadcast only: no
+  // database, no notification, nothing that reaches her screen.
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const fresh = herSeenAt.current > 0 && Date.now() - herSeenAt.current < ACK_STALE_MS;
+      setHerPresent(fresh);
+      if (!fresh) linkRef.current?.send(STAGE_EVENTS.hello, {});
+    }, PROBE_INTERVAL_MS);
+    return () => clearInterval(tick);
+  }, []);
+
+  /* ------------------------------------- his own phone waking back up */
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      linkRef.current?.revive();
+      linkRef.current?.send(STAGE_EVENTS.hello, {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
+    };
+  }, []);
 
   /* ------------------------------------------------------------- actions */
   const show = useCallback((id: string) => {
@@ -191,16 +255,21 @@ export function DirectorPanel() {
     setResetDone(true);
   };
 
+  // A knock that reaches nobody used to look exactly like a knock that worked.
+  // Tonight he needs to know within a second which one it was, because "her
+  // phone has no alerts turned on" is a problem only she can fix, in person.
   const ping = async () => {
     const sb = getSupabase();
     if (!sb || !auth.couple || !auth.user || !auth.partner) return;
     setPinged(true);
-    await pingPartnerDevice(
+    setPingResult(null);
+    const outcome = await pingPartnerDevice(
       sb,
       { couple: auth.couple.id, my: auth.user.id, her: auth.partner.id },
       "Open me 💌",
       "Happy Anniversary"
     );
+    setPingResult(outcome);
     setTimeout(() => setPinged(false), 4_000);
   };
 
@@ -285,13 +354,24 @@ export function DirectorPanel() {
   }
 
   /* ------------------------------------------------------- director panel */
-  const connected = linkStatus === "joined" && herShowing !== undefined;
-  const showingLabel =
-    herShowing === undefined
-      ? "Not connected yet"
-      : herShowing === null
-        ? "Holding screen"
-        : (moduleById(herShowing)?.label ?? herShowing);
+  const connected = linkStatus === "joined" && herPresent;
+  const staleBundle = connected && herProtocol !== STAGE_PROTOCOL;
+  const showingLabel = !connected
+    ? noLink
+      ? "This phone is not signed in"
+      : linkStatus !== "joined"
+        ? "Reconnecting this phone..."
+        : "Her app is not open"
+    : herShowing === null || herShowing === undefined
+      ? "Holding screen"
+      : (moduleById(herShowing)?.label ?? herShowing);
+
+  // What to actually do about it, which is the whole point of the readout.
+  const advice = noLink
+    ? "Sign in on this device before you drive anything."
+    : linkStatus !== "joined"
+      ? "This phone lost its connection. It retries by itself, so give it a few seconds."
+      : "Nothing lands while her app is closed. Knock on her phone below, then watch this go green."
 
   return (
     <div className="space-y-5 pb-8">
@@ -325,9 +405,16 @@ export function DirectorPanel() {
         <p className={cn("text-sm font-bold", connected ? "text-white" : "text-white/40")}>
           {showingLabel}
         </p>
-        {!connected && (
-          <p className="text-[11px] leading-relaxed text-white/35">
-            Her app has to be open for anything to land. Knock on her phone below.
+        {!connected && <p className="text-[11px] leading-relaxed text-white/35">{advice}</p>}
+
+        {/* She is answering, but from a bundle that predates today. Her date gate
+            is still the 31st, so her morning takeover will never fire and half of
+            this will behave like yesterday. Worth shouting about. */}
+        {staleBundle && (
+          <p className="rounded-xl bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-100/85 ring-1 ring-amber-400/30">
+            Her phone is connected but running an <b>old version</b> of the app. Have her close
+            it completely (swipe it away, not just back to the home screen) and open it again.
+            Sending things will still work, but her side is out of date until she does.
           </p>
         )}
         <div className="flex gap-2">
@@ -352,6 +439,27 @@ export function DirectorPanel() {
             Release
           </button>
         </div>
+
+        {/* Did the knock actually reach a phone? Silence here used to be
+            indistinguishable from success. */}
+        {pingResult && (
+          <p
+            className={cn(
+              "rounded-xl p-3 text-[11px] leading-relaxed ring-1",
+              pingResult.devices > 0 && pingResult.sent > 0
+                ? "bg-emerald-500/10 text-emerald-100/85 ring-emerald-400/30"
+                : "bg-amber-500/10 text-amber-100/85 ring-amber-400/30"
+            )}
+          >
+            {pingResult.failed
+              ? "The knock could not be sent from this phone. Check your own connection."
+              : pingResult.devices === 0
+                ? `No alerts are turned on for ${her.name}, so nothing was delivered. She has to open the app and tap Profile, then Turn on alerts. Until then the only way in is to tell her out loud.`
+                : pingResult.sent === 0
+                  ? `${her.name} has ${pingResult.devices} device registered but it refused the knock. It may need alerts turned on again in Profile.`
+                  : `Delivered to ${pingResult.sent} of ${pingResult.devices} device${pingResult.devices === 1 ? "" : "s"}.`}
+          </p>
+        )}
       </div>
 
       {/* the running order, built by what he has actually sent */}

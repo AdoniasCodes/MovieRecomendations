@@ -4,6 +4,21 @@
 
 export const stageTopic = (coupleId: string) => `stage:${coupleId}`;
 
+/**
+ * Bumped whenever the stage protocol changes. Her device stamps every ack with
+ * it, which is the ONLY way his panel can tell "she is not connected" apart
+ * from "she is connected but her phone is still running an old bundle". An ack
+ * with no `v` at all is a pre-2026-08-01 build.
+ */
+export const STAGE_PROTOCOL = "0801";
+
+/** she re-announces this often, so his panel can age her out honestly */
+export const ACK_INTERVAL_MS = 10_000;
+/** no ack for this long and she is treated as gone */
+export const ACK_STALE_MS = 32_000;
+/** while she looks absent, his panel re-probes this often */
+export const PROBE_INTERVAL_MS = 5_000;
+
 export const STAGE_EVENTS = {
   /** presenter -> follower: put this module on screen */
   show: "show",

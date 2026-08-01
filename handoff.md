@@ -2,6 +2,44 @@
 
 _Updated: 2026-08-01_
 
+## SYNC BUGS FOUND AND FIXED ON THE DAY (second commit of 2026-08-01)
+Panda reported: she opened the app and nothing happened, and his panel said "not connected".
+Three separate defects, all real, all fixed and E2E proven.
+
+1. **Her device only ever spoke when spoken to.** `AnniversaryStage` sent an `ack` in reply to
+   `hello` and nothing else. His panel sent `hello` exactly ONCE, when it mounted. So if she
+   opened the app AFTER he opened his panel (the normal order on the day), his one hello had
+   already gone unanswered and **nothing would ever tell him she had arrived**. The indicator
+   read "Not connected yet" for the rest of the night even while she was fully connected.
+   Her stage now announces on every join, on `state`, on foreground, and on a 10s heartbeat.
+2. **`lib/broadcast.ts` had NO retry of any kind.** One `CHANNEL_ERROR` or one `CLOSED` and
+   that topic was dead until the component remounted. A phone drops its websocket every time
+   the screen locks, so this was guaranteed to bite. Now: backoff retry while consumers remain,
+   a kick on `online`/`focus`, and a FORCED rejoin when the app was hidden more than 4s, even
+   if the status still claims "joined" (iOS suspends JS wholesale, so a resumed PWA routinely
+   holds a zombie socket that looks fine and silently swallows every send). New `revive()` on
+   the link for callers that know better.
+3. **The panel could not tell "she is offline" from "she is on an old bundle".** Every ack now
+   carries `STAGE_PROTOCOL` ("0801"). An ack with no `v` is a pre-today build, and the panel
+   says so in amber with the fix (close the app fully, reopen). This is the single most likely
+   explanation for "she opened the app and nothing happened": a stale bundle still computes
+   the date gate as the 31st.
+
+Also: **"Ping her phone" now reports what actually happened.** `pingPartnerDevice` returns
+`{devices, sent, failed}` and the panel says "Delivered to 1 of 1 device" or, if she has never
+enabled alerts, says plainly that nothing was delivered and what she must do. A knock that
+reached nobody used to look identical to one that worked.
+
+The panel's status line is now diagnostic rather than binary: "This phone is not signed in" /
+"Reconnecting this phone..." / "Her app is not open" / the module name, each with the matching
+next step underneath.
+
+E2E `scratchpad/probe-sync.mjs` **9/9**, each block a reproduction of a real failure: panel
+open first and her app second (the reported bug), her phone going offline and being aged out
+honestly, her phone returning and the link healing with no reload and no action from either of
+them, a module fired while she was away landing when she gets back, his own phone sleeping and
+recovering, and driving still working after all of it. `probe-today.mjs` still **16/16**.
+
 ## THE DAY MOVED TO 2026-08-01 (today), shipped this morning
 They did not celebrate on the 31st, so the whole experience was shifted a day. Everything
 behaves exactly as it would have yesterday.

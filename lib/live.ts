@@ -129,11 +129,20 @@ export async function loadCoupleState(
 
 // Fire-and-forget web push to the partner's registered devices. Failure is
 // fine: the notifications row is the source of truth, push is just the knock.
-async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string, title?: string) {
+/** what actually happened to a knock, for callers that need to say so out loud */
+export type PushOutcome = { devices: number; sent: number; failed: boolean };
+
+async function sendWebPush(
+  sb: SupabaseClient,
+  toUserId: string,
+  body: string,
+  title?: string
+): Promise<PushOutcome> {
+  const dead: PushOutcome = { devices: 0, sent: 0, failed: true };
   try {
     const { data } = await sb.auth.getSession();
     const token = data.session?.access_token;
-    if (!token) return;
+    if (!token) return dead;
     const res = await fetch("/api/push", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
@@ -146,8 +155,10 @@ async function sendWebPush(sb: SupabaseClient, toUserId: string, body: string, t
     if (!res.ok || (result && result.devices === 0)) {
       console.warn("[push] send degraded:", res.status, result);
     }
+    if (!res.ok) return dead;
+    return { devices: result?.devices ?? 0, sent: result?.sent ?? 0, failed: false };
   } catch {
-    /* best effort */
+    return dead;
   }
 }
 
@@ -277,8 +288,13 @@ export async function flushWriteQueue(sb: SupabaseClient, ids: Ids): Promise<num
  * director panel to knock on her phone ("open the app") without dropping an
  * entry in the notification board that would spoil the surprise.
  */
-export async function pingPartnerDevice(sb: SupabaseClient, ids: Ids, body: string, title?: string) {
-  await sendWebPush(sb, ids.her, body, title);
+export async function pingPartnerDevice(
+  sb: SupabaseClient,
+  ids: Ids,
+  body: string,
+  title?: string
+): Promise<PushOutcome> {
+  return sendWebPush(sb, ids.her, body, title);
 }
 
 export const push = {
