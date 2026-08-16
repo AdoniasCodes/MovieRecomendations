@@ -66,6 +66,15 @@ Four defects fixed, all real, all proven:
   stays usable. A healthy route still answers in ~1.4s, so the deadline costs nothing.
 - `scratchpad/probe-sync.mjs`: browser E2E on a local prod build against the real project.
 - `pnpm run build` green, typecheck clean, em-dash check clean on every touched file.
+- **Deploy VERIFIED LIVE** (commit a17adf4). Netlify page-chunk hashes differ from local as
+  always, so this was checked by CONTENT, per instructions §6: the profile chunk
+  (`page-7af950cc45ad9ac9.js`) carries "Test connection", "Repair now", "Live updates",
+  "App server", "Restart the app"; the layout chunk has "Still not syncing"; and shared chunk
+  `176-7602f6c13a6e2571.js` carries the recovery internals ("rt.rejoined", "repair.start",
+  "net.timeout", "heal.token", "rt.revive", "amore-movies/diag").
+- Two probes kept in the session scratchpad: `probe-wedge.mjs` (node, needs esbuild +
+  @supabase/supabase-js) and `probe-sync.mjs` (playwright-core + chromium). Both are
+  rerunnable and each check maps to a real reported symptom.
 
 ### Hosting: do NOT move yet
 He offered to switch to Vercel or Cloudflare. Moving would not have fixed this: the wedge was
