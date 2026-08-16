@@ -274,6 +274,45 @@ CLOSED. Fall back to the toggle only when `!auth.configured` (demo mode has no s
   never reaches the client bundle. Anything the client needs that the server also knows
   (like the VAPID public key) should be served from an API route at runtime instead.
 
+## §8g. THE WEDGE: why "not synced" needed a force-quit (2026-08-16)
+The longest-running bug in this project. Symptom: the red "Not synced" strip, tapping
+reconnect does nothing, VPN makes no difference, and only force-quitting and reopening the
+app fixes it. Root cause, confirmed by probe:
+
+**supabase-js ships no fetch timeout, so a request that HANGS never settles.** On a route
+that black-holes packets (Panda's ISP does this) a request does not fail, it hangs. If the
+hung request is the token refresh, auth-js parks its single-flight promise
+(`refreshingDeferred`) and never resolves it. Every later `getSession()` returns that same
+dead promise, and since supabase-js calls `_getAccessToken()` (which calls `getSession()`)
+before EVERY REST request, all reads and writes hang forever, with no error, for the life of
+the page. Destroying the JS context is the only escape, which is exactly why reopening the
+app worked and every in-app retry did not.
+
+Standing rules from this:
+- **Never create a Supabase client without a fetch deadline.** `lib/supabase.ts` passes
+  `global: { fetch: timedFetch }` with a 20s AbortController. That one line converts the
+  permanent jam into an ordinary retryable error. Do not remove it.
+- **Every await on a recovery path must be bounded.** The self-heal loop and the reconnect
+  handler both used to await un-timed calls, so they hung along with everything else: the
+  loop's `busy` flag stayed true forever and the spinner span until a restart. Use
+  `withTimeout` in `lib/auth.tsx`. A recovery path that can itself hang is not one.
+- **A retry is not a repair.** Re-running the same queries cannot fix an expired token.
+  `auth.reconnect()` does what a restart does, in order: force a fresh token, reload the
+  slice, rebuild the sockets. Escalate to a real reload only after that fails.
+- **Realtime needs the same defences as broadcast.ts.** `subscribeCoupleChanges` and
+  `trackPresence` were opened with a bare `.subscribe()`: no callback, no retry, no rejoin.
+  A phone drops its websocket on every screen lock. Both now go through `managedChannel`
+  (backoff rejoin, kick on online/foreground, forced rebuild after >4s hidden), and a REjoin
+  triggers a refetch because anything the partner did during the gap was never delivered.
+- **Diagnose from the phone, not from the laptop.** `lib/diag.ts` is a ring buffer mirrored
+  to localStorage; `lib/health.ts` tests the four legs (auth / data / realtime / host)
+  IN PARALLEL, so a wedged leg can never hide the others. Profile > Connection exposes both.
+  The log uploads to `client_logs` with PLAIN fetch and the anon key, never the supabase-js
+  client, because the moment worth capturing is the one where that client is broken.
+- Reproduce it with a local HTTP server that accepts the connection and never answers
+  (`scratchpad/probe-wedge.mjs`). That is what a black-holed route looks like to fetch, and
+  it is deterministic. A stock client stays pending forever; the fixed one settles at 20s.
+
 ## §6. Verifying a Netlify deploy (no dashboard access needed)
 GitHub commit statuses/check-runs stay empty for this repo (Netlify not wired as a GitHub check)
 and no Netlify CLI auth exists locally. After pushing to main, wait 2-4 min then:

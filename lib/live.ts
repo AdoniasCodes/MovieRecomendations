@@ -3,7 +3,8 @@
 // Strategy: optimistic local dispatch + mirror write here; realtime change →
 // refetch the couple slice and re-hydrate (idempotent, simple, fine for 2 people).
 
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
+import { diag } from "./diag";
 import type {
   ActivityEvent, AiMessage, Match, Note, Notification, Plan, PlanStatus, Reaction, Vote,
   Watcher, WatchPartyRecord, WatchPartyStatus, WatchSession, WatchedRecord, WatchlistItem,
@@ -150,7 +151,7 @@ async function sendWebPush(
       signal: AbortSignal.timeout(10_000),
     });
     // observable via remote debugging: a 503 or {devices:0} means push is
-    // misconfigured or the partner never subscribed — don't fail silently.
+    // misconfigured or the partner never subscribed. Don't fail silently.
     const result = (await res.json().catch(() => null)) as { sent?: number; devices?: number } | null;
     if (!res.ok || (result && result.devices === 0)) {
       console.warn("[push] send degraded:", res.status, result);
@@ -165,7 +166,7 @@ async function sendWebPush(
 // ---- self-echo suppression -------------------------------------------------
 // Realtime echoes our OWN writes back to us. Since every local mutation is
 // already dispatched optimistically, refetching the whole couple slice for a
-// self-echo is pure waste (8 queries + a full re-render per swipe/save — the
+// self-echo is pure waste (8 queries + a full re-render per swipe/save, and the
 // post-0004 slowdown). High-frequency tables record a local-write stamp here
 // and their echoes are dropped while it is fresh. Low-frequency tables (notes,
 // ai_messages, sessions, reactions) keep the refetch: it is how locally
@@ -182,7 +183,7 @@ const isSelfEcho = (table: string) => {
 
 const uid = (ids: Ids, w: Watcher) => (w === "me" ? ids.my : ids.her);
 
-// CRITICAL: supabase-js builders are LAZY — the request is only sent when the
+// CRITICAL: supabase-js builders are LAZY: the request is only sent when the
 // builder is awaited/then'd. Every mirror below is called fire-and-forget from
 // store.tsx, so each must be forced to execute here. run() kicks the builder
 // (Promise.resolve subscribes to the thenable) and swallows network errors
@@ -491,6 +492,169 @@ export async function fetchSessionReactions(
   }));
 }
 
+// ---- realtime plumbing ---------------------------------------------------
+//
+// RECOVERY (2026-08-16). lib/broadcast.ts was taught to survive a phone on
+// 2026-08-01; this file, which carries the ACTUAL couple sync (postgres_changes
+// plus presence), never was. Both channels here were opened with a bare
+// `.subscribe()`: no status callback, no retry, no rejoin. A phone drops its
+// websocket every single time the screen locks, so one lock was enough to stop
+// partner changes arriving until the component remounted, which in practice
+// meant force-quitting the app. That is a large part of "I can't see what she's
+// doing".
+//
+// Every channel in this file now goes through `managedChannel`, which gives it
+// the same three defences broadcast.ts has:
+//   1. backoff rejoin on CHANNEL_ERROR / TIMED_OUT / CLOSED,
+//   2. a kick on `online` and on returning to the foreground,
+//   3. a FORCED rebuild when the app was hidden more than a few seconds, since
+//      iOS suspends JS wholesale and a resumed socket often looks joined while
+//      silently delivering nothing.
+
+/** stepped backoff, then steady. Never gives up while the app is open. */
+const REJOIN_MS = [1_500, 3_000, 6_000, 10_000, 15_000];
+/** hidden longer than this and the socket is assumed dead on the way back */
+const ZOMBIE_AFTER_MS = 4_000;
+
+interface Managed {
+  rebuild: () => void;
+  joined: () => boolean;
+}
+
+const managed = new Set<Managed>();
+let recoveryWired = false;
+let hiddenAt = 0;
+
+function rejoinAll(force: boolean) {
+  for (const m of managed) {
+    if (force || !m.joined()) m.rebuild();
+  }
+}
+
+function wireRealtimeRecovery() {
+  if (recoveryWired || typeof window === "undefined") return;
+  recoveryWired = true;
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      hiddenAt = Date.now();
+      return;
+    }
+    const away = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (away > ZOMBIE_AFTER_MS) diag.log("rt.resume", `away ${Math.round(away / 1000)}s`);
+    rejoinAll(away > ZOMBIE_AFTER_MS);
+  });
+  window.addEventListener("online", () => {
+    diag.log("rt.online");
+    rejoinAll(true);
+  });
+  window.addEventListener("focus", () => rejoinAll(false));
+}
+
+/**
+ * Force every live channel to rebuild now. Called by the repair button and by
+ * the auth self-heal once the data path comes back, because a healthy REST
+ * connection with a dead socket still reads as "she isn't doing anything".
+ */
+export function reviveRealtime() {
+  if (managed.size === 0) return;
+  diag.log("rt.revive", `${managed.size} channels`);
+  rejoinAll(true);
+}
+
+interface ManagedHandle {
+  /** the live channel, or null between teardown and rejoin */
+  get: () => RealtimeChannel | null;
+  rebuild: () => void;
+  close: () => void;
+}
+
+/**
+ * Wrap a channel in the retry/rejoin machinery. `make` must build and bind a
+ * fresh channel (bindings do not survive a rebuild); `onJoin` runs on every
+ * successful subscribe, with `rejoined` true from the second one on so callers
+ * can refetch what they missed while the socket was down.
+ */
+function managedChannel(
+  sb: SupabaseClient,
+  tag: string,
+  make: () => RealtimeChannel,
+  onJoin?: (ch: RealtimeChannel, rejoined: boolean) => void
+): ManagedHandle {
+  wireRealtimeRecovery();
+
+  let current: RealtimeChannel | null = null;
+  let attempt = 0;
+  let joins = 0;
+  /** true only between a SUBSCRIBED and the next error/close/rebuild */
+  let live = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let closed = false;
+
+  const schedule = () => {
+    if (timer || closed) return;
+    const wait = REJOIN_MS[Math.min(attempt, REJOIN_MS.length - 1)];
+    attempt += 1;
+    timer = setTimeout(() => {
+      timer = null;
+      if (!closed) build();
+    }, wait);
+  };
+
+  const build = () => {
+    if (closed) return;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    // Tear the old one down FIRST: a half-joined zombie holds the topic and the
+    // replacement's phx_join would queue behind it forever.
+    live = false;
+    if (current) {
+      const old = current;
+      current = null;
+      void sb.removeChannel(old);
+    }
+    const ch = make();
+    current = ch;
+    ch.subscribe((status) => {
+      if (closed || current !== ch) return; // stale callback from a replaced channel
+      if (status === "SUBSCRIBED") {
+        attempt = 0;
+        live = true;
+        joins += 1;
+        if (joins > 1) diag.log("rt.rejoined", tag);
+        onJoin?.(ch, joins > 1);
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        live = false;
+        diag.log("rt.down", `${tag} ${status}`);
+        schedule();
+      }
+    });
+  };
+
+  const handle: ManagedHandle = {
+    get: () => current,
+    rebuild: () => {
+      attempt = 0;
+      build();
+    },
+    close: () => {
+      closed = true;
+      live = false;
+      managed.delete(entry);
+      if (timer) clearTimeout(timer);
+      if (current) void sb.removeChannel(current);
+      current = null;
+    },
+  };
+  const entry: Managed = { rebuild: handle.rebuild, joined: () => live };
+  managed.add(entry);
+  build();
+  return handle;
+}
+
 // ---- realtime + presence -------------------------------------------------
 
 const COUPLE_TABLES = [
@@ -513,27 +677,38 @@ const ACTOR_COL: Record<string, string> = {
 export function subscribeCoupleChanges(sb: SupabaseClient, ids: Ids, onChange: () => void): () => void {
   // every couple-scoped table (reactions now carries couple_id too) is filtered
   // to this couple, so another couple's activity never triggers a refetch storm.
-  const wire = (name: string, tables: string[]) => {
-    const ch = sb.channel(`${name}:${ids.couple}`);
-    for (const table of tables) {
-      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, (payload) => {
-        const col = ACTOR_COL[table];
-        const nu = payload.new as Record<string, unknown> | null;
-        const old = payload.old as Record<string, unknown> | null;
-        const actor = col ? nu?.[col] ?? old?.[col] : undefined;
-        const partnerWrite = actor != null && actor !== ids.my;
-        if (!partnerWrite && isSelfEcho(table)) return; // own echo (or unknown author) in window
-        onChange();
-      });
-    }
-    ch.subscribe();
-    return ch;
-  };
+  const wire = (name: string, tables: string[]) =>
+    managedChannel(
+      sb,
+      name,
+      () => {
+        const ch = sb.channel(`${name}:${ids.couple}`);
+        for (const table of tables) {
+          ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `couple_id=eq.${ids.couple}` }, (payload) => {
+            const col = ACTOR_COL[table];
+            const nu = payload.new as Record<string, unknown> | null;
+            const old = payload.old as Record<string, unknown> | null;
+            const actor = col ? nu?.[col] ?? old?.[col] : undefined;
+            const partnerWrite = actor != null && actor !== ids.my;
+            if (!partnerWrite && isSelfEcho(table)) return; // own echo (or unknown author) in window
+            onChange();
+          });
+        }
+        return ch;
+      },
+      // A REjoin means the socket was down, so anything she did in the gap was
+      // never delivered. Refetch once to catch up; the first join needs no such
+      // sweep because the store loads the slice itself on mount.
+      (_ch, rejoined) => {
+        if (rejoined) onChange();
+      }
+    );
+
   const core = wire("couple-changes", COUPLE_TABLES);
   const extras = wire("couple-extras", EXTRA_TABLES); // may fail pre-0006; core unaffected
   return () => {
-    sb.removeChannel(core);
-    sb.removeChannel(extras);
+    core.close();
+    extras.close();
   };
 }
 
@@ -543,7 +718,7 @@ const STALE_MS = 2.5 * 60_000; // a presence stamp older than this reads as "off
 
 /**
  * Track my presence on the couple channel; call onPartner(true/false) when the
- * other's online-ness changes. "Online" isn't just "has a presence entry" —
+ * other's online-ness changes. "Online" isn't just "has a presence entry":
  * Supabase presence only clears on a clean unmount/removeChannel, so a killed
  * tab or backgrounded phone would otherwise look online forever. Instead each
  * tracked entry carries a timestamp, and we treat it as stale (partner
@@ -555,10 +730,12 @@ export function trackPresence(
   ids: Ids,
   onPartner: (online: boolean) => void
 ): () => void {
-  const ch = sb.channel(`presence:${ids.couple}`, { config: { presence: { key: ids.my } } });
-
   let lastReported: boolean | null = null;
+  let handle: ManagedHandle | null = null;
+
   const evaluate = () => {
+    const ch = handle?.get();
+    if (!ch) return;
     const state = ch.presenceState() as Record<string, Array<{ at?: number }>>;
     let newestAt = 0;
     for (const key of Object.keys(state)) {
@@ -575,23 +752,32 @@ export function trackPresence(
     }
   };
 
-  ch.on("presence", { event: "sync" }, evaluate);
-  ch.on("presence", { event: "join" }, evaluate);
-  ch.on("presence", { event: "leave" }, evaluate);
-
-  ch.subscribe(async (status) => {
-    if (status === "SUBSCRIBED") {
-      await ch.track({ at: Date.now() });
+  // Managed like every other channel here: presence that silently dies when the
+  // screen locks is what made a partner look permanently offline.
+  handle = managedChannel(
+    sb,
+    "presence",
+    () => {
+      const ch = sb.channel(`presence:${ids.couple}`, { config: { presence: { key: ids.my } } });
+      ch.on("presence", { event: "sync" }, evaluate);
+      ch.on("presence", { event: "join" }, evaluate);
+      ch.on("presence", { event: "leave" }, evaluate);
+      return ch;
+    },
+    (ch) => {
+      // re-announce on every join, including rejoins: a rebuilt channel starts
+      // with an empty presence state and would otherwise show us as gone
+      void ch.track({ at: Date.now() });
       evaluate();
     }
-  });
+  );
 
   // heartbeat: keep my stamp fresh while the tab is actually visible and I'm
-  // not idle for over an hour — this is what makes ME go "offline" to my
+  // not idle for over an hour. This is what makes ME go "offline" to my
   // partner after a long idle stretch even with the tab still open.
   const heartbeat = setInterval(() => {
     if (document.visibilityState === "visible" && Date.now() - getLastActivity() < IDLE_LIMIT_MS) {
-      ch.track({ at: Date.now() });
+      void handle?.get()?.track({ at: Date.now() });
     }
   }, HEARTBEAT_MS);
 
@@ -600,17 +786,20 @@ export function trackPresence(
   const freshness = setInterval(evaluate, HEARTBEAT_MS);
 
   const onVisibility = () => {
+    const ch = handle?.get();
     if (document.visibilityState === "hidden") {
-      ch.untrack();
+      void ch?.untrack();
     } else {
-      ch.track({ at: Date.now() });
+      // the shared recovery wiring may be rebuilding this channel right now; the
+      // onJoin above re-tracks, so this is only the fast path when it is healthy
+      void ch?.track({ at: Date.now() });
       evaluate();
     }
   };
   document.addEventListener("visibilitychange", onVisibility);
 
   const onPageHide = () => {
-    ch.untrack();
+    void handle?.get()?.untrack();
   };
   window.addEventListener("pagehide", onPageHide);
 
@@ -619,6 +808,6 @@ export function trackPresence(
     clearInterval(freshness);
     document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("pagehide", onPageHide);
-    sb.removeChannel(ch);
+    handle?.close();
   };
 }

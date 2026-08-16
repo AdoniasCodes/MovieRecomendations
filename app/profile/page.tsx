@@ -1,6 +1,7 @@
 "use client";
 
 import { PinLogin } from "@/components/auth/PinLogin";
+import { ConnectionCard } from "@/components/ConnectionCard";
 import { EnableAlerts } from "@/components/notifications/EnableAlerts";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { PosterCard } from "@/components/ui/PosterCard";
@@ -62,7 +63,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* couple — real auth + pairing */}
+      {/* couple: real auth + pairing */}
       <PinLogin />
 
       {/* install as an app */}
@@ -188,6 +189,9 @@ export default function ProfilePage() {
           ))}
         </div>
       </section>
+
+      {/* connection: self-test + repair + the device log */}
+      <ConnectionCard />
 
       {/* danger / utility */}
       <section className="space-y-2 pt-2">

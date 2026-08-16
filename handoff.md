@@ -1,6 +1,82 @@
 # handoff.md — Amore Movies
 
-_Updated: 2026-08-01_
+_Updated: 2026-08-16_
+
+## THE SYNC BUG IS ROOT-CAUSED AND FIXED (2026-08-16)
+Panda: "it says not synced and tap to reconnect, tapping does nothing, the VPN does not help,
+but closing the app and reopening it works." Months of this. It was never the network on its
+own and it was never the host.
+
+**Root cause: a hung request, not a failed one.** supabase-js creates its client with no fetch
+timeout. On a route that black-holes packets (his ISP does exactly this) a request does not
+fail, it hangs. When the hung request is the token refresh, auth-js parks its single-flight
+promise `refreshingDeferred` and never settles it. Every later `getSession()` returns that same
+dead promise, and supabase-js calls `_getAccessToken()` (which calls `getSession()`) before
+EVERY REST request. So one hang froze every read and write for the life of the page, with no
+error and no rejection. Only destroying the JS context escaped it, which is precisely why
+force-quitting worked, why tapping reconnect never did, and why the VPN was irrelevant: the jam
+was inside the tab, not on the wire.
+
+Four defects fixed, all real, all proven:
+1. **No fetch deadline.** `lib/supabase.ts` now passes `global: { fetch: timedFetch }`, a 20s
+   AbortController wrapper. auth-js treats an abort as a retryable fetch error, so the deferred
+   settles and the app can heal instead of needing a restart. Slow and failed requests are
+   logged with timings.
+2. **The recovery paths could hang too.** The self-heal loop and the reconnect handler awaited
+   un-timed calls, so they hung with everything else: the loop's `busy` flag stayed true forever
+   (killing the 20s retry after its FIRST stall) and the reconnect spinner span until a restart.
+   Everything now goes through `withTimeout` in `lib/auth.tsx`. The loop also ESCALATES: from
+   the third attempt it forces a token refresh first, which is the one thing a restart did that
+   a retry never did.
+3. **"Tap to reconnect" could not fix what it reported.** It re-ran the same six queries with
+   the same stale token. New `auth.reconnect()` does what a restart does, in order: fresh token,
+   reload the couple slice, rebuild the realtime socket and every channel. The strip now
+   escalates honestly, offering "Restart the app" when repair genuinely fails, instead of
+   spinning.
+4. **The main sync channel had NO recovery at all.** `subscribeCoupleChanges` and
+   `trackPresence` were opened with a bare `.subscribe()`: no status callback, no retry, no
+   rejoin. `lib/broadcast.ts` was hardened on 2026-08-01 but this file, which carries the actual
+   couple sync, never was. A phone drops its websocket on every screen lock, so one lock stopped
+   partner updates until a remount. Both now go through `managedChannel` (backoff rejoin, kick
+   on online/foreground, forced rebuild after >4s hidden), and a REjoin triggers a refetch since
+   anything she did during the gap was never delivered.
+
+**New maintenance surface (Panda asked for logs he could hand over):**
+- `lib/diag.ts` a flight recorder: 300-entry ring buffer of connection events, mirrored to
+  localStorage so it survives a force-quit. By contract it never records tokens, PINs or
+  message bodies, so it can always be uploaded without thinking about it.
+- `lib/health.ts` tests the four legs separately and IN PARALLEL (auth / data / realtime /
+  host), so a wedged leg can never hide the others.
+- `components/ConnectionCard.tsx` in Profile: live status, Test connection, Repair now, Send
+  log, Copy log, Restart the app.
+- The strip auto-uploads the log once per app-open when it appears, so the next failure is
+  readable from the DB without Panda doing anything.
+
+### PANDA MUST DO
+1. **Apply `supabase/migrations/0007_client_logs.sql`** in the Supabase SQL editor. Until then
+   Send log fails (everything else works). Note the MCP Supabase connection on this machine only
+   has the unrelated "Abogida" project, so this could not be applied from here.
+2. Open the app once on the phone so the new bundle lands.
+
+### Verification
+- `scratchpad/probe-wedge.mjs` 8/8 against the REAL `lib/supabase.ts`, using a local server that
+  accepts the connection and never answers (what a black-holed route looks like to fetch).
+  The two BASELINE checks reproduce the bug on a stock client: a query stays pending forever,
+  and after a hung refresh every later query jams forever. The fixed client settles at 20s and
+  stays usable. A healthy route still answers in ~1.4s, so the deadline costs nothing.
+- `scratchpad/probe-sync.mjs`: browser E2E on a local prod build against the real project.
+- `pnpm run build` green, typecheck clean, em-dash check clean on every touched file.
+
+### Hosting: do NOT move yet
+He offered to switch to Vercel or Cloudflare. Moving would not have fixed this: the wedge was
+in the client, and Supabase (which carries all couple sync) is already behind Cloudflare and
+reachable from his ISP. Netlify is the flaky leg, and it only affects loading the app and
+`/api/*` (Discover refresh, AI, sending push). Vercel geo-routes to Frankfurt too, so it is
+likely the same route. The real durable fix remains the already-approved, still-unbuilt one: a
+cheap domain proxied through Cloudflare in front of the same Netlify site. Ship this first and
+read the "App server" leg in the Connection test before spending a day on it.
+
+## PREVIOUS STATE (2026-08-01)
 
 ## SYNC BUGS FOUND AND FIXED ON THE DAY (second commit of 2026-08-01)
 Panda reported: she opened the app and nothing happened, and his panel said "not connected".

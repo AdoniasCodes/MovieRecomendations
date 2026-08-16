@@ -2,8 +2,28 @@
 
 import type { Session, User } from "@supabase/supabase-js";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { diag } from "./diag";
+import { reviveRealtime } from "./live";
 import { derivePassword } from "./pin-accounts";
 import { getSupabase, supabaseConfigured } from "./supabase";
+
+/**
+ * Bound a promise. EVERY await on a recovery path goes through this.
+ *
+ * The 2026-08-16 wedge taught the lesson twice over: the boot path was already
+ * timed out, but the self-heal retry and the "tap to reconnect" handler were
+ * not, so when a Supabase call hung they hung with it: the retry loop's `busy`
+ * flag stayed true forever and the reconnect spinner span until the app was
+ * force-quit. A recovery path that can itself hang is not a recovery path.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((res) => setTimeout(() => res(fallback), ms))]);
+}
+
+/** one couple-slice load should never take longer than this */
+const LOAD_TIMEOUT_MS = 12_000;
+/** a forced token refresh is a single round trip; it gets less rope */
+const AUTH_TIMEOUT_MS = 10_000;
 
 export interface Profile {
   id: string;
@@ -32,6 +52,8 @@ interface AuthCtx {
   createCouple: () => Promise<{ code?: string; error?: string }>;
   joinCouple: (code: string) => Promise<{ error?: string }>;
   refresh: () => Promise<void>;
+  /** full repair: fresh token, reload, rebuild sockets. true = live again. */
+  reconnect: () => Promise<boolean>;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -46,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Resolves the couple slice. Returns false on a FAILED/PARTIAL load (network
   // error mid-way) so callers retry; a transient failure must never clear
-  // still-valid couple state or read as "genuinely unpaired" — one flaky boot
+  // still-valid couple state or read as "genuinely unpaired". One flaky boot
   // used to leave the app silently in demo mode until a full restart.
   const loadAll = useCallback(
     async (s: Session | null): Promise<boolean> => {
@@ -69,7 +91,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!me.error && me.data) setProfile(me.data);
 
         const mem = await sb.from("couple_members").select("couple_id").eq("user_id", uid).maybeSingle();
-        if (mem.error) return false;
+        if (mem.error) {
+          diag.log("load.fail", `members ${mem.error.code ?? ""} ${mem.error.message}`.slice(0, 120));
+          return false;
+        }
         if (!mem.data) {
           // genuinely unpaired (the query succeeded and found nothing)
           setCouple(null);
@@ -94,8 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const p = await sb.from("profiles").select("id,name,emoji,color").eq("id", otherId).maybeSingle();
         if (p.error || !p.data) return false;
         setPartner(p.data);
+        diag.log("load.ok");
         return true;
-      } catch {
+      } catch (e) {
+        diag.log("load.throw", String((e as Error)?.message ?? e).slice(0, 120));
         return false;
       }
     },
@@ -108,10 +135,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let active = true;
-    // Boot must NEVER pin the splash: every step is timed out and the loading
-    // flag clears in finally even if the network stalls or a call rejects.
-    const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
-      Promise.race([p, new Promise<T>((res) => setTimeout(() => res(fallback), ms))]);
+    diag.log("boot");
+    // Boot must NEVER pin the splash: every step is timed out (module-level
+    // withTimeout) and the loading flag clears in finally even if the network
+    // stalls or a call rejects.
     // loadAll dedup: the boot IIFE and onAuthStateChange (INITIAL_SESSION,
     // TOKEN_REFRESHED) would otherwise each run the same ~6-query load for the
     // same user. Track whose data is loaded and only reload on a real change.
@@ -136,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })();
     const { data: sub } = sb.auth.onAuthStateChange(async (_e, s) => {
+      diag.log("auth.event", `${_e}${s ? "" : " nosession"}`);
       setSession(s);
       const key = s?.user.id ?? null;
       if (key === loadedFor) {
@@ -161,18 +189,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [sb, loadAll]);
 
   // SELF-HEAL: signed in but the couple slice is incomplete (couple or partner
-  // unresolved). Retry quietly until it completes — on a timer, on reconnect,
-  // and on foreground — so a flaky boot can never strand the app in demo mode.
+  // unresolved). Retry quietly until it completes, on a timer, on reconnect
+  // and on foreground, so a flaky boot can never strand the app in demo mode.
+  //
+  // It now also ESCALATES: a plain retry cannot fix an expired access token, so from
+  // the third attempt on it forces a token refresh first. That is the step the
+  // old loop was missing, and it is why a bad stretch used to survive until a
+  // force-quit: a restart refreshes the token, which is the only reason
+  // reopening the app "fixed" it.
   const incomplete = !!session && (!couple || !partner);
   useEffect(() => {
     if (!sb || loading || !incomplete) return;
     let busy = false;
+    let attempt = 0;
+    let stop = false;
     const tryLoad = async () => {
-      if (busy || document.visibilityState !== "visible") return;
+      if (busy || stop || document.visibilityState !== "visible") return;
       busy = true;
+      attempt += 1;
       try {
-        await loadAll(session);
+        if (attempt >= 3) {
+          // bounded: a hung refresh must not take the retry loop down with it
+          diag.log("heal.token", `attempt ${attempt}`);
+          await withTimeout(sb.auth.refreshSession().then(() => true), AUTH_TIMEOUT_MS, false);
+        }
+        const ok = await withTimeout(loadAll(session), LOAD_TIMEOUT_MS, false);
+        diag.log("heal", `attempt ${attempt} ${ok ? "ok" : "fail"}`);
+        if (ok) {
+          attempt = 0;
+          // the data path is back; make sure the realtime path is too
+          reviveRealtime();
+        }
       } finally {
+        // ALWAYS releases, because every await above is bounded
         busy = false;
       }
     };
@@ -181,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("online", tryLoad);
     document.addEventListener("visibilitychange", tryLoad);
     return () => {
+      stop = true;
       clearTimeout(t);
       clearInterval(iv);
       window.removeEventListener("online", tryLoad);
@@ -236,8 +286,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refresh = useCallback(async () => {
-    await loadAll(session);
+    await withTimeout(loadAll(session), LOAD_TIMEOUT_MS, false);
   }, [loadAll, session]);
+
+  /**
+   * What "tap to reconnect" should always have done. The old version re-ran the
+   * same six queries with the same (possibly expired) token, which is why
+   * tapping it did nothing while force-quitting the app worked. This does the
+   * three things a restart does, in the order a restart does them:
+   *
+   *   1. force a fresh access token,
+   *   2. reload the couple slice,
+   *   3. rebuild the realtime socket and every channel on it.
+   *
+   * Every step is bounded, so this always returns instead of spinning forever.
+   * Returns true when the app is genuinely live again.
+   */
+  const reconnect = useCallback(async (): Promise<boolean> => {
+    if (!sb) return false;
+    diag.log("repair.start");
+    // 1. token
+    const fresh = await withTimeout(
+      sb.auth
+        .refreshSession()
+        .then((r) => (r.error ? null : r.data.session))
+        .catch(() => null),
+      AUTH_TIMEOUT_MS,
+      null
+    );
+    if (fresh) setSession(fresh);
+    diag.log("repair.token", fresh ? "ok" : "fail");
+
+    // 2. data
+    const ok = await withTimeout(loadAll(fresh ?? session), LOAD_TIMEOUT_MS, false);
+
+    // 3. sockets. Worth doing even when the data load failed: the two paths
+    //    fail independently and a live socket is what stops the next stall.
+    try {
+      sb.realtime.disconnect();
+      sb.realtime.connect();
+    } catch {
+      /* realtime rebuild is best-effort */
+    }
+    reviveRealtime();
+
+    diag.log("repair.done", ok ? "ok" : "fail");
+    return ok;
+  }, [sb, loadAll, session]);
 
   const value = useMemo<AuthCtx>(
     () => ({
@@ -254,8 +349,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       createCouple,
       joinCouple,
       refresh,
+      reconnect,
     }),
-    [loading, session, profile, couple, partner, signInWithPin, signOut, createCouple, joinCouple, refresh]
+    [loading, session, profile, couple, partner, signInWithPin, signOut, createCouple, joinCouple, refresh, reconnect]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

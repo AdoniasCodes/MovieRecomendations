@@ -57,11 +57,28 @@ them); everything else gets the bell banner + badge.
 - Be honest in the copy about what each phone can do (Android buzzes, iPhone only taps). See
   instructions.md §8f.
 
+## Connection health (the 2026-08-16 fix, read before touching auth or realtime)
+The "not synced, tapping reconnect does nothing, only a force-quit helps" bug was a HANG,
+not a network outage: supabase-js has no fetch timeout, so one black-holed request parked
+auth-js's refresh promise and every read and write queued behind it forever. Full write-up
+and the standing rules in instructions.md §8g. The short version:
+- `lib/supabase.ts` gives the client a 20s `timedFetch`. Never create the client without it.
+- Every await on a recovery path is bounded by `withTimeout` (`lib/auth.tsx`). A recovery
+  path that can itself hang is not a recovery path.
+- `auth.reconnect()` is the repair: fresh token, reload, rebuild sockets, in that order.
+  A plain refetch is not a repair and must not be sold as one in the UI.
+- Realtime channels go through `managedChannel` in `lib/live.ts` (backoff rejoin, kick on
+  online/foreground, forced rebuild after >4s hidden), same as `lib/broadcast.ts`.
+- `lib/diag.ts` + `lib/health.ts` + Profile > Connection are the maintenance surface.
+  Logs upload to `client_logs` with plain fetch, never the supabase-js client.
+
 ## Don't
 - Don't add real API keys to the repo. Use `.env.local` (gitignored).
 - Don't break the `store.tsx` action seam or move uuid handling out of `live.ts`.
 - NEVER call a supabase-js builder fire-and-forget: builders are lazy and only execute
   when awaited/then'd. Wrap mirrors in `run()` (see `lib/live.ts` + instructions.md §8a).
+- Never log a token, a PIN or a message body into `diag`. Kinds and short details only, so
+  a log can always be uploaded without thinking about it.
 - Overlays: nothing interactive may render above the TitleSheet (z-50) except true
   takeovers (MatchOverlay/WatchParty z-60, AfterDark 70, EnableAlerts 80, WelcomeGate 100).
   Anything faded out via opacity-0 needs pointer-events-none.
