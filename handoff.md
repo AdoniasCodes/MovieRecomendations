@@ -52,11 +52,31 @@ Four defects fixed, all real, all proven:
 - The strip auto-uploads the log once per app-open when it appears, so the next failure is
   readable from the DB without Panda doing anything.
 
-### PANDA MUST DO
-1. **Apply `supabase/migrations/0007_client_logs.sql`** in the Supabase SQL editor. Until then
-   Send log fails (everything else works). Note the MCP Supabase connection on this machine only
-   has the unrelated "Abogida" project, so this could not be applied from here.
-2. Open the app once on the phone so the new bundle lands.
+### PANDA MUST DO: ALL DONE (2026-08-16)
+1. ~~Apply migration 0007.~~ **APPLIED by Panda and VERIFIED against the live DB from here:**
+   anon INSERT returns 201 (the exact call `diag.upload` makes) and an authenticated SELECT
+   reads the row back. Both halves of the logging path work, so a phone's log really can be
+   read from the database later.
+2. ~~Open the app once on the phone.~~ **DONE.** Panda cleared the phone's site data, reloaded,
+   and confirmed the fix works **both in the browser and in the installed PWA**. First load took
+   2 to 3 seconds (normal cold load, nothing was cached).
+
+### Known warts from this session
+- **One junk row in `client_logs`** (`session_id = 'probe-verify'`), written from this machine to
+  prove the insert path. It CANNOT be removed by the app or by an authenticated user, because
+  the delete policy in 0007 is `using (created_at < now() - interval '30 days')`. Remove it from
+  the Supabase SQL editor (service role bypasses RLS):
+  `delete from public.client_logs where session_id = 'probe-verify';`
+  It ages out by itself after 30 days and is harmless until then.
+- Optional, low priority: if pruning debug logs on demand is ever wanted, relax that policy to
+  `using (true)`. Nothing depends on it today, so this was deliberately NOT turned into another
+  migration for Panda to run.
+- **Clearing site data is a one-time tool, not a habit.** It signs the device out (PIN again on
+  next open) and wipes the on-device `diag` log, which is exactly the evidence needed if the
+  sync ever misbehaves again. The service worker updates itself on its own now.
+- Pre-existing em-dash debt, NOT introduced this session and deliberately not bundled into a
+  bugfix commit: 42 in code comments (incl. `lib/ai.ts` lines 27 to 28, which feed the AI system
+  prompt and so can shape user-visible output) and 49 across the three docs. Worth its own sweep.
 
 ### Verification
 - `scratchpad/probe-wedge.mjs` 8/8 against the REAL `lib/supabase.ts`, using a local server that
