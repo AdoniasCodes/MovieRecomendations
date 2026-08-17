@@ -1,3 +1,8 @@
+# context.md archive (superseded 2026-08-17)
+
+> Verbatim copy of the retired context.md. handoff.md is now the single living state file;
+> this is kept for history only. Its "last updated" claims and port notes are stale.
+
 # context.md — Amore Movies
 
 > Living memory of this project. Read this first every session. Update it whenever something
