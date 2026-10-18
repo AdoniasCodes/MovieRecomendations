@@ -258,7 +258,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, pin: string) => {
       if (!sb) return { error: "Supabase not configured" };
       const { error } = await sb.auth.signInWithPassword({ email, password: derivePassword(pin) });
-      return error ? { error: "Wrong PIN. Try again." } : {};
+      if (!error) return {};
+      // Only a real "invalid credentials" answer means the PIN is wrong. Anything
+      // else (server asleep, network down, 5xx) must not blame the PIN.
+      const code = (error as { code?: string }).code;
+      if (code === "invalid_credentials" || /invalid login credentials/i.test(error.message)) {
+        return { error: "Wrong PIN. Try again." };
+      }
+      return { error: "Can't reach the server right now, your PIN is probably fine. Check your connection and try again in a minute." };
     },
     [sb]
   );

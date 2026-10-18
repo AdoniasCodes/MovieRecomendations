@@ -137,7 +137,8 @@ async function sendWebPush(
   sb: SupabaseClient,
   toUserId: string,
   body: string,
-  title?: string
+  title?: string,
+  notificationId?: string
 ): Promise<PushOutcome> {
   const dead: PushOutcome = { devices: 0, sent: 0, failed: true };
   try {
@@ -147,7 +148,7 @@ async function sendWebPush(
     const res = await fetch("/api/push", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ toUserId, title: title ?? "Amore Movies 💞", body, url: "/" }),
+      body: JSON.stringify({ notificationId, toUserId, title: title ?? "Amore Movies 💞", body, url: "/" }),
       signal: AbortSignal.timeout(10_000),
     });
     // observable via remote debugging: a 503 or {devices:0} means push is
@@ -162,6 +163,10 @@ async function sendWebPush(
     return dead;
   }
 }
+
+/** Profile "send me a test": knocks on MY own devices through the real server path. */
+export const sendTestPush = (sb: SupabaseClient, myUserId: string) =>
+  sendWebPush(sb, myUserId, "Test knock: if you can read this, notifications work on this phone 💞");
 
 // ---- self-echo suppression -------------------------------------------------
 // Realtime echoes our OWN writes back to us. Since every local mutation is
@@ -345,12 +350,17 @@ export const push = {
   deleteNote: (sb: SupabaseClient, ids: Ids, noteId: string) =>
     run(sb.from("notes").delete().eq("id", noteId)),
   notify: (sb: SupabaseClient, ids: Ids, type: string, body: string, titleId?: string) => {
-    // best-effort web push so the partner is alerted even with the app closed
-    void sendWebPush(sb, ids.her, body);
+    // The row is the source of truth. Since 0008 the database itself asks the
+    // server to push the moment it lands; this call is only the backup knock,
+    // sent after the insert so the server can claim it by id (one push, never two).
+    const id = crypto.randomUUID();
     markLocalWrite("notifications");
     return run(sb.from("notifications").insert({
-      couple_id: ids.couple, type, actor_id: ids.my, to_id: ids.her, title_id: titleId ?? null, body, read: false,
-    }));
+      id, couple_id: ids.couple, type, actor_id: ids.my, to_id: ids.her, title_id: titleId ?? null, body, read: false,
+    })).then((res) => {
+      if (res && !(res as { error?: unknown }).error) void sendWebPush(sb, ids.her, body, undefined, id);
+      return res;
+    });
   },
   readNotifs: (sb: SupabaseClient, ids: Ids) => {
     markLocalWrite("notifications");

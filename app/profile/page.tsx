@@ -3,6 +3,7 @@
 import { PinLogin } from "@/components/auth/PinLogin";
 import { ConnectionCard } from "@/components/ConnectionCard";
 import { EnableAlerts } from "@/components/notifications/EnableAlerts";
+import { NotifyPrefs } from "@/components/notifications/NotifyPrefs";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { anniversaryPhase, type AnniversaryPhase } from "@/lib/anniversary/date";
@@ -71,6 +72,7 @@ export default function ProfilePage() {
 
       {/* device alerts (web push) */}
       <EnableAlerts />
+      <NotifyPrefs />
 
       {/* year one: the anniversary experience */}
       {showAnniversary && (

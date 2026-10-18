@@ -761,7 +761,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (sb && ids && due.id.includes("-")) push.setPlanStatus(sb, due.id, "done");
       }
       if (ids && sb) {
-        push.notify(sb, ids, "started", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id);
+        push.notify(sb, ids, "party", `${meUser().name} started a watch-along of ${title?.title} 🍿`, id);
         push.activity(sb, ids, "party", `started a watch-along of ${title?.title} 🍿`, id);
         push.startSession(sb, ids, id).then((sid) => {
           if (!sid) return;

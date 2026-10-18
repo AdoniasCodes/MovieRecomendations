@@ -1,7 +1,7 @@
-// Amore Movies service worker — offline app shell.
+// Amore Movies service worker: offline app shell.
 // Registered only in production (see RegisterSW.tsx) to avoid dev caching pain.
 //
-// Caching contract (learned the hard way — v4 cached RSC payloads/shell
+// Caching contract (learned the hard way: v4 cached RSC payloads/shell
 // cache-first, which after a deploy served a stale build, made Next.js
 // hard-reload on every client navigation, and re-showed the splash on every
 // tab change):
@@ -38,7 +38,11 @@ self.addEventListener("push", (event) => {
       body: data.body || "Something happened over at Amore Movies",
       icon: "/icon-192.png",
       badge: "/icon.svg",
-      tag: data.tag || "amore-generic",
+      // a tag per notification (from the server) so a new one never silently
+      // replaces the last; renotify makes a reused tag still buzz and ring.
+      tag: data.tag || "amore-" + Date.now(),
+      renotify: true,
+      vibrate: [120, 60, 120],
       data: { url: data.url || "/" },
     })
   );
