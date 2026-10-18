@@ -28,6 +28,9 @@ Panda: "most things aren't working, login says wrong PIN, no notifications on An
 Commit `81739c5`. Direct test pushes from the server: Panda's current FCM sub 201, Hermi's Apple
 sub 201, Panda's old FCM sub 410 (pruned).
 
+Panda's verdict at session end (2026-10-18): "perfect you fixed it", still testing on both phones.
+Not yet confirmed: whether 0008 was pasted. First thing next session: check `notify_prefs` exists.
+
 ### PANDA MUST DO (guide: `guides/fix-notifications.html`)
 1. Paste 0008 into the Supabase SQL editor and Run. Then verify from here: notify_prefs exists,
    insert a notification and see push_jobs drained (claimed) within seconds.
