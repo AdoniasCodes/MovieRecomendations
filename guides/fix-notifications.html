@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fix Notifications</title>
+<style>
+:root{--bg:#fbf7f4;--ink:#1f1a24;--muted:#6b6372;--card:#fff;--line:#eadfe6;--accent:#c2185b;--ok:#2e7d32}
+@media (prefers-color-scheme:dark){:root{--bg:#17131a;--ink:#f3eef5;--muted:#a79fae;--card:#221c26;--line:#3a3040;--accent:#f06292;--ok:#81c784}}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 system-ui,-apple-system,sans-serif}
+main{max-width:680px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:32px 0 8px}
+.sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:12px 0}
+ol{padding-left:22px}li{margin:6px 0}
+b.k{background:var(--line);border-radius:6px;padding:1px 6px;font-weight:600}
+pre{background:#120f14;color:#e8e2ea;border-radius:10px;padding:12px;max-height:220px;overflow:auto;font-size:12px;white-space:pre-wrap}
+button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:12px 18px;font-size:16px;font-weight:700;cursor:pointer}
+.done{color:var(--ok);font-weight:700}
+.q{border-left:4px solid var(--accent)}
+</style></head><body><main>
+<h1>Fix notifications 🔔</h1>
+<p class="sub">For Panda. About 10 minutes. Do the steps in order.</p>
+
+<div class="card">
+<b>What was wrong, in short:</b>
+<ol>
+<li>The database fell asleep (Supabase does this after a quiet week). That broke login, sync and alerts. The "wrong PIN" message was a lie: your PIN 9009 was fine.</li>
+<li>Alerts were sent by the <i>sender's</i> phone. Your internet provider sometimes blocks our server, so your alerts to Hermi often never left.</li>
+<li>Every alert used the same name, so a new one quietly <i>replaced</i> the old one with no sound.</li>
+</ol>
+<b>What I fixed:</b> the database now sends alerts itself, every alert buzzes, the PIN message tells the truth, and a robot pokes the database every 3 days so it never sleeps again. <span class="done">Already live.</span>
+</div>
+
+<h2>Step 1. Paste one thing into Supabase (on your laptop)</h2>
+<div class="card">
+<ol>
+<li>Tap the button below. It copies the code.</li>
+<li>Go to <b>supabase.com</b>, sign in, open the <b>Amore Movies</b> project.</li>
+<li>In the left menu click <b class="k">SQL Editor</b>, then <b class="k">+ New query</b>.</li>
+<li>Click in the big empty box, press <b class="k">Cmd + V</b> to paste.</li>
+<li>Click the green <b class="k">Run</b> button. You should see <b>"Success. No rows returned"</b>.</li>
+<li>Tell me "done" in Claude Code. I will test it from here.</li>
+</ol>
+<button id="copy">Copy the code</button> <span id="copied" class="done"></span>
+<pre id="sql">-- 0008: server-side push + per-person notification choices.
+-- Panda applies this via the Supabase SQL editor (paste the whole file, Run).
+--
+-- Why: until now the SENDER&#x27;s phone called /api/push to knock on the partner&#x27;s
+-- phone. Panda&#x27;s ISP drops Netlify on and off, so his knocks silently never
+-- left. Now the database itself calls /api/push the moment a notification row
+-- lands (pg_net, from Supabase&#x27;s servers, which always reach Netlify). The
+-- client still calls too, as a backup; claim_push() makes sure only ONE of
+-- the two actually sends.
+
+create extension if not exists pg_net;
+
+-- 1) What each person wants on their lock screen. No row = the defaults below.
+--    The bell inside the app still shows everything; this only filters pushes.
+create table if not exists public.notify_prefs (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  muted text[] not null default &#x27;{watchlisted,started,watched,ai}&#x27;,
+  updated_at timestamptz not null default now()
+);
+alter table public.notify_prefs enable row level security;
+drop policy if exists &quot;prefs own&quot; on public.notify_prefs;
+create policy &quot;prefs own&quot; on public.notify_prefs
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- 2) One pending knock per notification. No policies on purpose: only the
+--    security definer functions below may touch it.
+create table if not exists public.push_jobs (
+  notification_id uuid primary key references public.notifications(id) on delete cascade,
+  nonce text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.push_jobs enable row level security;
+
+-- 3) On every new notification: queue a job and ask the server to send it.
+--    A pg_net failure must never block the notification itself.
+create or replace function public.enqueue_push() returns trigger
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  n text := encode(gen_random_bytes(18), &#x27;hex&#x27;);
+begin
+  delete from push_jobs where created_at &lt; now() - interval &#x27;1 day&#x27;;
+  insert into push_jobs (notification_id, nonce) values (new.id, n)
+    on conflict (notification_id) do nothing;
+  begin
+    perform net.http_post(
+      url := &#x27;https://amoremovies.netlify.app/api/push&#x27;,
+      body := jsonb_build_object(&#x27;notificationId&#x27;, new.id, &#x27;nonce&#x27;, n),
+      headers := &#x27;{&quot;Content-Type&quot;: &quot;application/json&quot;}&#x27;::jsonb,
+      timeout_milliseconds := 15000
+    );
+  exception when others then
+    null; -- the client&#x27;s backup call can still claim the job
+  end;
+  return new;
+end $$;
+
+drop trigger if exists notifications_push on public.notifications;
+create trigger notifications_push after insert on public.notifications
+  for each row execute function public.enqueue_push();
+
+-- 4) Single-use claim. The database&#x27;s own call proves itself with the nonce;
+--    the client&#x27;s backup call proves itself by being the notification&#x27;s actor.
+--    Whoever deletes the job row first sends; the other gets null and stops.
+create or replace function public.claim_push(p_id uuid, p_nonce text default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  n notifications;
+  claimed uuid;
+  m text[];
+  subs jsonb;
+begin
+  delete from push_jobs j
+   where j.notification_id = p_id
+     and (
+       (p_nonce is not null and j.nonce = p_nonce)
+       or exists (select 1 from notifications x where x.id = p_id and x.actor_id = auth.uid())
+     )
+  returning j.notification_id into claimed;
+  if claimed is null then return null; end if;
+
+  select * into n from notifications where id = p_id;
+  if not found or n.created_at &lt; now() - interval &#x27;1 hour&#x27; then return null; end if;
+
+  select muted into m from notify_prefs where user_id = n.to_id;
+  if not found then m := &#x27;{watchlisted,started,watched,ai}&#x27;; end if;
+  if n.type = any (m) then
+    return jsonb_build_object(&#x27;muted&#x27;, true, &#x27;subs&#x27;, &#x27;[]&#x27;::jsonb);
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(&#x27;endpoint&#x27;, endpoint, &#x27;p256dh&#x27;, p256dh, &#x27;auth&#x27;, auth)), &#x27;[]&#x27;::jsonb)
+    into subs from push_subscriptions where user_id = n.to_id;
+
+  return jsonb_build_object(
+    &#x27;id&#x27;, n.id, &#x27;type&#x27;, n.type, &#x27;body&#x27;, n.body, &#x27;title_id&#x27;, n.title_id, &#x27;subs&#x27;, subs
+  );
+end $$;
+
+-- dead endpoints (404/410 from Apple/Google) get pruned by the sender
+create or replace function public.prune_push(p_endpoint text) returns void
+language sql security definer set search_path = public as $$
+  delete from push_subscriptions where endpoint = p_endpoint;
+$$;
+
+revoke all on function public.claim_push(uuid, text) from public;
+revoke all on function public.prune_push(text) from public;
+grant execute on function public.claim_push(uuid, text) to anon, authenticated;
+grant execute on function public.prune_push(text) to anon, authenticated;
+</pre>
+</div>
+
+<h2>Step 2. Your Galaxy (Android 16)</h2>
+<div class="card">
+Samsung puts apps to sleep to save battery. A sleeping app gets no alerts. That is why other sites still reach you: they are not asleep.
+<ol>
+<li>Open <b class="k">Settings</b> &gt; <b class="k">Battery</b> &gt; <b class="k">Background usage limits</b>.</li>
+<li>Open <b class="k">Never sleeping apps</b> &gt; tap <b>+</b> &gt; pick <b>Chrome</b> and <b>Amore Movies</b> (if you see it) &gt; <b class="k">Add</b>.</li>
+<li>Make sure Chrome is <i>not</i> in "Sleeping apps" or "Deep sleeping apps".</li>
+<li>Open <b class="k">Settings</b> &gt; <b class="k">Apps</b> &gt; <b class="k">Chrome</b> &gt; <b class="k">Battery</b> &gt; pick <b>Unrestricted</b>.</li>
+<li>Same place, <b class="k">Notifications</b>: turn them on. Scroll to <b>amoremovies.netlify.app</b> and turn it on too.</li>
+</ol>
+</div>
+
+<h2>Step 3. Hermi's iPhone</h2>
+<div class="card">
+<ol>
+<li>She must open Amore Movies from the <b>Home Screen icon</b>, not from Safari. Alerts only work there.</li>
+<li><b class="k">Settings</b> &gt; <b class="k">Notifications</b> &gt; <b class="k">Amore Movies</b>: turn on <b>Allow Notifications</b>, <b>Lock Screen</b>, <b>Banners</b> and <b>Sounds</b>.</li>
+<li>If she uses a Focus (Sleep, Work...), add Amore Movies to its allowed apps, or alerts stay silent.</li>
+<li>If she ever deletes the Home Screen icon and adds it again, she must tap <b>Turn on alerts</b> in Profile again.</li>
+</ol>
+</div>
+
+<h2>Step 4. Test on both phones</h2>
+<div class="card">
+<ol>
+<li>Open the app &gt; <b class="k">Profile</b>.</li>
+<li>Tap <b class="k">Turn on alerts</b> (if it does not already say "Alerts are on").</li>
+<li>Below it, in <b>What knocks on your phone</b>, pick what you want. I turned off list changes, watching progress and AI questions. Each of you picks your own.</li>
+<li>Tap <b class="k">Send me a test notification</b>, then lock the phone right away. It should pop up in a few seconds.</li>
+<li>Last test: Hermi likes a movie on Discover while your app is closed. Your phone should buzz.</li>
+</ol>
+</div>
+
+<h2>Questions for you</h2>
+<div class="card q">
+<ol>
+<li><b>Likes:</b> every like she swipes buzzes your phone. During a long swipe session that can be a lot. Keep it on? <i>My pick: keep it on, and turn it off in Profile if it gets noisy.</i></li>
+<li><b>Tapping an alert</b> opens the home page right now. Want it to open the movie the alert is about? <i>My pick: yes, I can do it next.</i></li>
+</ol>
+</div>
+</main>
+<script>
+document.getElementById("copy").onclick=async()=>{const t=document.getElementById("sql").innerText;try{await navigator.clipboard.writeText(t)}catch(e){const r=document.createRange();r.selectNodeContents(document.getElementById("sql"));const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("copy")}document.getElementById("copied").textContent="Copied!"};
+</script>
+</body></html>

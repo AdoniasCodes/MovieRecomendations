@@ -28,6 +28,14 @@ same commit. Types are free-form text in the DB; extend `NotificationType` + the
 ICON map. Nudges get the full `NudgeOverlay` takeover (bell banner is suppressed for
 them); everything else gets the bell banner + badge.
 
+## Push notifications (Panda, 2026-10-18)
+- Push only what the couple wants on the lock screen (matches, movie nights, watch-alongs, likes,
+  notes, nudges...). Each person picks in Profile; the server enforces it (`claim_push`). The
+  in-app bell still lists everything.
+- Pushes go out from the server (DB trigger, migration 0008), never only from the sender's phone.
+- The Supabase keepalive (`netlify/functions/keepalive.mts`, every 3 days) must never be removed:
+  a paused project broke login, sync and push at once.
+
 ## Year One (the anniversary experience, Phase 13)
 - **All content lives in `lib/anniversary/script.ts`.** One flat list of modules. To change what
   Hermi sees, edit that file and nothing else. Photos go in `public/anniversary/photos/`, voice

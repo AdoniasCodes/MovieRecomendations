@@ -144,6 +144,21 @@ Full post-mortem in `docs/postmortems.md`. Standing rules:
 
 ---
 
+## §8h. Web push pipeline (since 0008)
+- Insert into `notifications` (via `push.notify`) is the ONLY way to push the partner. The DB
+  trigger calls `/api/push` with `{notificationId, nonce}`; the client sends a backup
+  `{notificationId, toUserId, body}` with its JWT AFTER the insert. `claim_push()` deletes the
+  `push_jobs` row, so only one caller sends. Never push from the client without a row.
+- New notification type: add it to `NotificationType`, the bell ICON map, and a `KINDS` entry in
+  `components/notifications/NotifyPrefs.tsx`. If it should be off by default, add it to
+  `DEFAULT_MUTED` there AND to both defaults in the migration (`notify_prefs.muted` and `claim_push`).
+- Sends use `urgency: "high"`, TTL 86400, tag `amore-<notification id>`; the SW sets `renotify`.
+- Probing delivery from the Mac: a node script with `web-push` + `.env.local` VAPID keys
+  against `push_subscriptions` (service role) shows the real Apple/Google status per device
+  (201 ok, 410 dead). It sends a REAL notification, so word the body as a test.
+- Supabase pauses after ~7 quiet days. `netlify/functions/keepalive.mts` prevents it; check
+  `client_logs?session_id=eq.keepalive` (service role) to see its pings.
+
 # Device, identity, presence
 
 ## §10. Two-user identity, idle, per-device prefs
